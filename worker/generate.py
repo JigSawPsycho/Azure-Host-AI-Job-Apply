@@ -1,8 +1,10 @@
 """Anthropic call: produce a cover letter for one job + a set of user CVs.
 
-Hard rule: the model must never identify itself or its provider in the
-output. The system prompt enforces this, and we run a defensive
-post-check before persisting.
+The system prompt instructs the model not to identify itself or its
+provider in a meta sense. We do NOT post-filter on the words "claude"
+or "anthropic" — those legitimately appear in cover letters for jobs
+at Anthropic, or at any company that integrates Claude. The safety net
+is the human-in-the-loop review in the apply UI before mark-sent.
 """
 from __future__ import annotations
 
@@ -16,31 +18,27 @@ from .extractors import CVFile, extract_text
 PROMPT_DIR = Path(__file__).resolve().parent / "prompts"
 GUIDE_DIR = Path(__file__).resolve().parent / "writing_guides"
 
-# Hard constraint shown to every model. Keeps the model identifier
-# out of any artefact the employer can see.
+# Hard constraint shown to every model. Keeps meta-commentary about
+# the model itself out of the letter — the candidate may freely
+# reference "Claude" or "Anthropic" as a product or employer if that's
+# legitimately what the role is about.
 ANONYMITY_CLAUSE = """
-You are drafting a cover letter that will be submitted to an employer
-verbatim. The employer must not be able to tell that AI assisted with
-this letter. Therefore, in your output:
+You are drafting a cover letter that will be submitted to an employer.
+The letter must read as if the candidate wrote it themselves. Therefore:
 
-- Never name yourself, never mention "Claude", "Anthropic", "AI", "LLM",
-  "language model", "model", or any provider/product name.
-- Never include meta-commentary about how the letter was generated.
-- Never include disclaimers about limitations, capabilities, or training data.
-- Never sign off with anything other than the candidate's name.
+- Do not refer to yourself as "an AI", "a language model", or any
+  variant. The letter is in the candidate's voice, not yours.
+- Do not include meta-commentary about how the letter was generated,
+  drafting notes, hedges, or disclaimers about your capabilities.
+- Sign off with the candidate's name only.
+
+Note: the candidate may legitimately mention Claude, Anthropic, or any
+other product/company by name if it's relevant to the role they're
+applying for. The rule above is about not breaking the first-person
+voice — it is not a ban on those words.
 
 Your output is the letter itself. Nothing else.
 """.strip()
-
-# Forbidden substrings (case-insensitive) we refuse to ship in the body.
-_FORBIDDEN = (
-    "claude",
-    "anthropic",
-    "as an ai",
-    "as a language model",
-    "i am an ai",
-    "i am a language model",
-)
 
 
 @dataclass
@@ -105,7 +103,6 @@ def generate_cover_letter(
     raw = "".join(block.text for block in resp.content if getattr(block, "type", None) == "text")
 
     chosen, body = _split_response(raw, fallback_cv=cvs[0].name)
-    _enforce_anonymity(body)
     return GenerationResult(chosen_cv=chosen, body_md=body.strip(), model_used=model_id)
 
 
@@ -118,13 +115,3 @@ def _split_response(raw: str, fallback_cv: str) -> tuple[str, str]:
     chosen = match.group(1).strip()
     body = raw[match.end():].lstrip("\n")
     return chosen, body
-
-
-def _enforce_anonymity(body: str) -> None:
-    lower = body.lower()
-    for term in _FORBIDDEN:
-        if term in lower:
-            raise GenerationError(
-                f"generated letter contained forbidden term {term!r}; "
-                f"refusing to persist"
-            )

@@ -72,12 +72,18 @@ After signing in:
 ## Model selection
 
 `api/models_const.py` lists the Anthropic models surfaced in the Settings
-dropdown. Default is **Sonnet 4.6**. Selection is per-user; the chosen model
-ID is recorded on each `application` row as **internal metadata only**. The
-generation prompt (`worker/generate.py`) explicitly forbids the model from
-naming itself or its provider in the body, and a defensive substring check
-refuses to persist outputs that contain "claude", "anthropic", "as an AI",
-etc. The employer never sees model info.
+dropdown. Default is **Sonnet 4.6**. Selection is per-user; the chosen
+model ID is recorded on each `application` row as **internal metadata
+only** — never written into `body_md`, the PR title/description, commit
+messages, or anything employer-visible.
+
+The system prompt (`worker/generate.py:ANONYMITY_CLAUSE`) tells the model
+to write in the candidate's first-person voice and avoid meta-commentary
+("as an AI", "as a language model"). It does **not** ban the words
+"Claude" or "Anthropic" — devs applying to Anthropic, or to companies
+that integrate Claude, will have those words appear legitimately. The
+safety net is the human-in-the-loop review on the Applications page
+before mark-sent.
 
 ## Tests
 
