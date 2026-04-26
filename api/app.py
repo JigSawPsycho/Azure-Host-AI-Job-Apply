@@ -9,7 +9,14 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from db import init_db
-from . import applications_routes, auth, runs, settings_routes
+from . import (
+    applications_routes,
+    auth,
+    email_auth,
+    google_auth,
+    runs,
+    settings_routes,
+)
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
@@ -24,6 +31,8 @@ def create_app() -> FastAPI:
     init_db()
 
     app.include_router(auth.router)
+    app.include_router(google_auth.router)
+    app.include_router(email_auth.router)
     app.include_router(settings_routes.router)
     app.include_router(runs.router)
     app.include_router(applications_routes.router)

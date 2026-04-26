@@ -20,7 +20,8 @@ class ModelOptionOut(BaseModel):
 
 
 class SettingsOut(BaseModel):
-    github_login: str
+    display_name: str
+    github_login: str | None
     has_anthropic_key: bool
     generation_model: str
     available_models: list[ModelOptionOut]
@@ -55,7 +56,9 @@ class CriteriaOut(CriteriaIn):
 
 @router.get("", response_model=SettingsOut)
 def read_settings(user: User = Depends(current_user)) -> SettingsOut:
+    display_name = user.github_login or user.email or f"user-{user.id}"
     return SettingsOut(
+        display_name=display_name,
         github_login=user.github_login,
         has_anthropic_key=bool(user.anthropic_key_ref),
         generation_model=user.generation_model,

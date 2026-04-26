@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ai-apply · sign in</title>
+  <link rel="stylesheet" href="/static/apply.css" />
+  <link rel="stylesheet" href="/static/shell.css" />
+</head>
+<body>
+  <main class="auth-shell">
+    <a class="auth-brand" href="/">ai-apply</a>
+
+    <section class="auth-card">
+      <h1>Sign in</h1>
+
+      <form id="email-form" class="auth-form" novalidate>
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" autocomplete="email" required />
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required />
+        </div>
+        <button type="submit" class="btn btn-primary auth-submit">Sign in</button>
+        <p class="status" id="status" aria-live="polite"></p>
+      </form>
+
+      <div class="auth-divider"><span>or</span></div>
+
+      <div class="auth-providers">
+        <a class="btn btn-outline auth-provider" href="/auth/google/login">
+          <span class="provider-glyph">G</span> Continue with Google
+        </a>
+        <a class="btn btn-outline auth-provider" href="/auth/github/login">
+          <span class="provider-glyph">GH</span> Continue with GitHub
+        </a>
+      </div>
+
+      <p class="auth-footer">
+        Don't have an account? <a href="/signup.html">Sign up</a>
+      </p>
+    </section>
+  </main>
+
+  <script src="/static/login.js" defer></script>
+</body>
+</html>

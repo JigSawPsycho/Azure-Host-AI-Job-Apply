@@ -20,7 +20,9 @@ ai-apply/
   .env.example            ← required config
   api/                    ← FastAPI handlers
     app.py                ← create_app()
-    auth.py               ← GitHub OAuth
+    auth.py               ← GitHub OAuth (full)
+    google_auth.py        ← Google OIDC (full; needs GOOGLE_CLIENT_ID)
+    email_auth.py         ← email/password stubs — wire to your IdP
     secrets.py            ← envelope-encrypted secret store (local + KV stub)
     settings_routes.py    ← API key, model choice, repo, criteria
     runs.py               ← POST/GET runs
@@ -38,7 +40,9 @@ ai-apply/
   db/                     ← SQLAlchemy 2.0 models + engine
   frontend/               ← static pages + JS port of website/apply.*
     index.html, settings.html, run.html
+    login.html, signup.html
     static/apply.{css,js}, settings.js, run.js, shell.{css,js}
+    static/login.js, signup.js
 ```
 
 ## Local quickstart
@@ -57,9 +61,25 @@ python main.py
 # → http://127.0.0.1:8000
 ```
 
-Register a GitHub OAuth App at https://github.com/settings/developers with
-the callback URL `http://localhost:8000/auth/github/callback`. Plug
-`Client ID` and `Client Secret` into `.env`.
+### Sign-in providers
+
+The login page (`/login.html`) offers three options:
+
+1. **GitHub OAuth** — fully wired. Register at
+   https://github.com/settings/developers; callback
+   `http://localhost:8000/auth/github/callback`. Set `GITHUB_CLIENT_ID`
+   + `GITHUB_CLIENT_SECRET` in `.env`.
+2. **Google OAuth (OIDC)** — fully wired. Register at
+   https://console.cloud.google.com/apis/credentials; redirect URI
+   `http://localhost:8000/auth/google/callback`; scopes `openid email
+   profile`. Set `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET`.
+   Returns 501 if not configured (so the button surfaces a clear error
+   rather than redirecting into a broken consent screen).
+3. **Email/password** — UI is built; backend endpoints in
+   `api/email_auth.py` are stubs returning 501. Wire them to your
+   identity provider (e.g. Azure AD B2C / Entra External ID). They
+   should look up or create a `User` row by email and set
+   `request.session["user_id"]`.
 
 After signing in:
 

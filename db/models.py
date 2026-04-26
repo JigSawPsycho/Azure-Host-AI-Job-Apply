@@ -56,9 +56,12 @@ class User(Base):
     __tablename__ = "user"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    github_id: Mapped[int] = mapped_column(Integer, unique=True, index=True)
-    github_login: Mapped[str] = mapped_column(String(80))
-    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # All provider IDs are nullable: a user signs in with one of {GitHub,
+    # Google, email/password (handled by the IdP your auth wiring uses)}.
+    github_id: Mapped[int | None] = mapped_column(Integer, unique=True, index=True, nullable=True)
+    github_login: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    google_id: Mapped[str | None] = mapped_column(String(80), unique=True, index=True, nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), index=True, nullable=True)
 
     # Reference to a managed-secrets entry (e.g. Azure Key Vault secret name).
     # Never the raw key — see worker/secrets.py.

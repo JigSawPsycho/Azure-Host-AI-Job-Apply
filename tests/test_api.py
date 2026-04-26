@@ -38,3 +38,52 @@ def test_frontend_index_served():
 
 def test_static_css_served():
     assert _client().get("/static/apply.css").status_code == 200
+
+
+def test_login_page_served():
+    resp = _client().get("/login.html")
+    assert resp.status_code == 200
+    body = resp.text
+    assert "Continue with Google" in body
+    assert "Continue with GitHub" in body
+    assert 'id="email-form"' in body
+
+
+def test_signup_page_served():
+    resp = _client().get("/signup.html")
+    assert resp.status_code == 200
+
+
+def test_email_login_returns_501_until_wired():
+    resp = _client().post(
+        "/auth/email/login",
+        json={"email": "test@example.com", "password": "hunter2hunter2"},
+    )
+    assert resp.status_code == 501
+    assert "not wired up" in resp.json()["detail"].lower()
+
+
+def test_email_signup_returns_501_until_wired():
+    resp = _client().post(
+        "/auth/email/signup",
+        json={"email": "new@example.com", "password": "hunter2hunter2"},
+    )
+    assert resp.status_code == 501
+
+
+def test_google_login_returns_501_when_unconfigured(monkeypatch):
+    # Default test env has no GOOGLE_CLIENT_ID — we expect a clear 501.
+    monkeypatch.setattr("api.google_auth.CLIENT_ID", "")
+    resp = _client().get("/auth/google/login", follow_redirects=False)
+    assert resp.status_code == 501
+    assert "not configured" in resp.json()["detail"].lower()
+
+
+def test_google_login_redirects_when_configured(monkeypatch):
+    monkeypatch.setattr("api.google_auth.CLIENT_ID", "test-google-id")
+    resp = _client().get("/auth/google/login", follow_redirects=False)
+    assert resp.status_code == 307
+    location = resp.headers["location"]
+    assert location.startswith("https://accounts.google.com/o/oauth2/v2/auth")
+    assert "client_id=test-google-id" in location
+    assert "openid" in location

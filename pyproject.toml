@@ -30,6 +30,7 @@ dependencies = [
     "python-dotenv>=1.0",
     # validation
     "pydantic>=2.6",
+    "email-validator>=2.1",
 ]
 
 [project.optional-dependencies]

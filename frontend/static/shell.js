@@ -1,4 +1,4 @@
-// Shared shell: shows logged-in user, redirects to login on 401.
+// Shared shell: shows logged-in user, redirects to /login.html on 401.
 (async () => {
   "use strict";
   const userEl = document.getElementById("shell-user");
@@ -6,10 +6,12 @@
   try {
     const res = await fetch("/api/settings", { cache: "no-store" });
     if (res.status === 401) {
-      const signedOut = document.getElementById("signed-out");
-      if (signedOut) signedOut.hidden = false;
-      userEl.innerHTML = '<a href="/auth/github/login">Sign in</a>';
       window.__aiApplyAnonymous = true;
+      // Don't redirect-loop if we're already on an auth page.
+      if (!/\/(login|signup)\.html$/.test(window.location.pathname)) {
+        const next = encodeURIComponent(window.location.pathname + window.location.search);
+        window.location.replace(`/login.html?next=${next}`);
+      }
       return;
     }
     if (!res.ok) {
@@ -17,7 +19,7 @@
       return;
     }
     const settings = await res.json();
-    userEl.textContent = "@" + settings.github_login;
+    userEl.textContent = settings.github_login ? "@" + settings.github_login : settings.display_name;
     window.__aiApplySettings = settings;
   } catch (err) {
     userEl.textContent = "offline";
