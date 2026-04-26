@@ -5,6 +5,9 @@
     anthropic: document.getElementById("anthropic-key"),
     model: document.getElementById("model"),
     blurb: document.getElementById("model-blurb"),
+    ghStatus: document.getElementById("github-status"),
+    ghConnectBtn: document.getElementById("github-connect-btn"),
+    ghPrBtn: document.getElementById("github-connect-pr-btn"),
     repo: document.getElementById("repo-name"),
     cvDir: document.getElementById("cv-dir"),
     pr: document.getElementById("deliver-as-pr"),
@@ -50,6 +53,19 @@
     els.repo.value = s.repo_full_name || "";
     els.cvDir.value = s.cv_dir || "cv";
     els.pr.checked = !!s.deliver_as_pr;
+
+    if (s.github_connected) {
+      const who = s.github_login ? "@" + s.github_login : "your GitHub account";
+      els.ghStatus.textContent = `Connected as ${who}.`;
+      els.ghStatus.style.color = "var(--accent)";
+      els.ghConnectBtn.textContent = "Reconnect GitHub";
+      els.ghPrBtn.hidden = false;
+    } else {
+      els.ghStatus.textContent = "Not connected. ai-apply can't fetch CVs or open PRs until you connect.";
+      els.ghStatus.style.color = "";
+      els.ghConnectBtn.textContent = "Connect GitHub";
+      els.ghPrBtn.hidden = true;
+    }
   }
 
   async function loadCriteria() {

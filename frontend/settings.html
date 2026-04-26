@@ -34,6 +34,17 @@
       </div>
     </section>
 
+    <section class="settings-form" id="github-connect">
+      <h2>GitHub connection</h2>
+      <p class="model-blurb" id="github-status">Checking…</p>
+      <p class="model-blurb">
+        ai-apply needs read access to your GitHub repo to fetch CV files,
+        and (optionally) write access to open PRs back to it.
+      </p>
+      <a id="github-connect-btn" class="btn btn-outline" href="/auth/github/login">Connect GitHub</a>
+      <a id="github-connect-pr-btn" class="btn btn-outline" href="/auth/github/login?deliver_as_pr=true" style="margin-left:8px;">Re-authorize for PR delivery</a>
+    </section>
+
     <section class="settings-form" id="repo">
       <h2>GitHub repo + CV directory</h2>
       <div class="field">

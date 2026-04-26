@@ -1,7 +1,15 @@
 """GitHub OAuth flow.
 
-Implements the device-independent authorization-code flow. Two scopes:
+Two distinct uses, single callback:
 
+- **Sign in with GitHub** (anonymous user clicks the button on /login.html).
+  Look up or create the User by github_id; set request.session["user_id"].
+
+- **Connect GitHub** (already-signed-in user clicks Connect on /settings.html
+  to authorize CV reads / PR delivery). The session already has user_id;
+  attach the new token + github_id to that user without switching identity.
+
+Scopes:
 - `read:user user:email` — default. Enough to identify the user and read
   public CV files via the user's token, IF the linked repo is public.
 - `repo` (or `public_repo`) — only requested when the user opts into
@@ -80,19 +88,33 @@ def callback(
         user_resp.raise_for_status()
         gh_user = user_resp.json()
 
-    user = session.query(User).filter_by(github_id=gh_user["id"]).one_or_none()
-    if user is None:
-        user = User(
-            github_id=gh_user["id"],
-            github_login=gh_user["login"],
-            email=gh_user.get("email"),
-        )
-        session.add(user)
-        session.flush()
-    else:
+    existing_user_id = request.session.get("user_id")
+    if existing_user_id:
+        # Connect flow: attach the token + github identity to the
+        # already-signed-in user (e.g. a user who signed up via Google
+        # is now authorising GitHub access for CV reads / PR delivery).
+        user = session.get(User, existing_user_id)
+        if user is None:
+            raise HTTPException(401, "session refers to a missing user")
+        user.github_id = gh_user["id"]
         user.github_login = gh_user["login"]
-        if gh_user.get("email"):
+        if gh_user.get("email") and not user.email:
             user.email = gh_user["email"]
+    else:
+        # Sign-in flow: look up or create by github_id.
+        user = session.query(User).filter_by(github_id=gh_user["id"]).one_or_none()
+        if user is None:
+            user = User(
+                github_id=gh_user["id"],
+                github_login=gh_user["login"],
+                email=gh_user.get("email"),
+            )
+            session.add(user)
+            session.flush()
+        else:
+            user.github_login = gh_user["login"]
+            if gh_user.get("email"):
+                user.email = gh_user["email"]
 
     store = get_store()
     if user.repo_link and user.repo_link.github_token_ref:
@@ -106,7 +128,8 @@ def callback(
 
     session.commit()
     request.session["user_id"] = user.id
-    return RedirectResponse("/")
+    # Connect flow lands on /settings.html; sign-in flow lands on /.
+    return RedirectResponse("/settings.html" if existing_user_id else "/")
 
 
 @router.post("/logout")

@@ -55,6 +55,22 @@
     }
   }
 
+  function checkPrereqs() {
+    const s = window.__aiApplySettings;
+    if (!s) return;
+    const issues = [];
+    if (!s.has_anthropic_key) issues.push("Anthropic API key");
+    if (!s.github_connected) issues.push("GitHub connection");
+    if (!s.repo_full_name) issues.push("repo name");
+    if (issues.length > 0) {
+      els.start.disabled = true;
+      setStatus(
+        `Set up first: ${issues.join(", ")}. → Settings`,
+        "err"
+      );
+    }
+  }
+
   els.start.addEventListener("click", async () => {
     els.start.disabled = true;
     setStatus("Starting…");
@@ -74,6 +90,7 @@
   (async () => {
     await new Promise((r) => setTimeout(r, 30));
     if (window.__aiApplyAnonymous) return;
+    checkPrereqs();
     loadRecent();
   })();
 })();

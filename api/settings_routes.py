@@ -22,6 +22,7 @@ class ModelOptionOut(BaseModel):
 class SettingsOut(BaseModel):
     display_name: str
     github_login: str | None
+    github_connected: bool
     has_anthropic_key: bool
     generation_model: str
     available_models: list[ModelOptionOut]
@@ -57,9 +58,11 @@ class CriteriaOut(CriteriaIn):
 @router.get("", response_model=SettingsOut)
 def read_settings(user: User = Depends(current_user)) -> SettingsOut:
     display_name = user.github_login or user.email or f"user-{user.id}"
+    github_connected = bool(user.repo_link and user.repo_link.github_token_ref)
     return SettingsOut(
         display_name=display_name,
         github_login=user.github_login,
+        github_connected=github_connected,
         has_anthropic_key=bool(user.anthropic_key_ref),
         generation_model=user.generation_model,
         available_models=[ModelOptionOut(**opt.__dict__) for opt in MODEL_OPTIONS],
@@ -89,15 +92,26 @@ def update_settings(
             raise HTTPException(400, f"unknown model: {payload.generation_model}")
         user.generation_model = payload.generation_model
 
-    if user.repo_link is None:
-        raise HTTPException(400, "complete OAuth before configuring repo")
+    repo_fields_set = any(
+        v is not None for v in (payload.repo_full_name, payload.cv_dir, payload.deliver_as_pr)
+    )
+    if repo_fields_set and user.repo_link is None:
+        # User signed in via Google/email and is trying to save a repo
+        # name before connecting GitHub. Stash the values so they aren't
+        # lost; the connect flow will fill in github_token_ref.
+        from db import RepoLink
 
-    if payload.repo_full_name is not None:
-        user.repo_link.repo_full_name = payload.repo_full_name
-    if payload.cv_dir is not None:
-        user.repo_link.cv_dir = payload.cv_dir
-    if payload.deliver_as_pr is not None:
-        user.repo_link.deliver_as_pr = payload.deliver_as_pr
+        user.repo_link = RepoLink(repo_full_name="", cv_dir="cv")
+        session.add(user.repo_link)
+        session.flush()
+
+    if user.repo_link is not None:
+        if payload.repo_full_name is not None:
+            user.repo_link.repo_full_name = payload.repo_full_name
+        if payload.cv_dir is not None:
+            user.repo_link.cv_dir = payload.cv_dir
+        if payload.deliver_as_pr is not None:
+            user.repo_link.deliver_as_pr = payload.deliver_as_pr
 
     session.commit()
     return read_settings(user)

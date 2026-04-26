@@ -87,3 +87,46 @@ def test_google_login_redirects_when_configured(monkeypatch):
     assert location.startswith("https://accounts.google.com/o/oauth2/v2/auth")
     assert "client_id=test-google-id" in location
     assert "openid" in location
+
+
+def test_settings_signed_in_user_with_no_github_shows_disconnected():
+    """A user that signed up via Google/email (no GitHub connection yet)
+    should still be able to view Settings; github_connected reflects the
+    missing repo_link.github_token_ref."""
+    from db import User
+    from db.session import SessionLocal
+
+    db = SessionLocal()
+    try:
+        u = User(email="g@example.com", google_id="g-12345")
+        db.add(u)
+        db.commit()
+        user_id = u.id
+    finally:
+        db.close()
+
+    client = _client()
+    # Forge a session by hitting the test cookie path: easiest is to call
+    # the dependency directly via dependency_overrides.
+    from api.app import create_app
+    from api.auth import current_user
+
+    app = create_app()
+
+    def override():
+        from db.session import SessionLocal as SL
+        s = SL()
+        try:
+            yield s.get(User, user_id)
+        finally:
+            s.close()
+
+    app.dependency_overrides[current_user] = override
+    from fastapi.testclient import TestClient
+    overridden = TestClient(app)
+    resp = overridden.get("/api/settings")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["github_connected"] is False
+    assert body["github_login"] is None
+    assert body["display_name"] == "g@example.com"
