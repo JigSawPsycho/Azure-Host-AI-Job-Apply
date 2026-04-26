@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ai-apply</title>
+  <link rel="stylesheet" href="/static/apply.css" />
+  <link rel="stylesheet" href="/static/shell.css" />
+</head>
+<body>
+  <header class="shell-topbar">
+    <a class="shell-brand" href="/">ai-apply</a>
+    <nav class="shell-nav">
+      <a href="/">Applications</a>
+      <a href="/run.html">Run</a>
+      <a href="/settings.html">Settings</a>
+    </nav>
+    <div class="shell-user" id="shell-user"></div>
+  </header>
+
+  <main class="app" id="app">
+    <header class="topbar">
+      <h1 id="page-title">Unsent applications</h1>
+      <div class="topbar-right">
+        <span class="counter" id="counter">–</span>
+        <div class="nav">
+          <button type="button" id="prev" class="btn btn-ghost" aria-label="Previous">&larr;</button>
+          <button type="button" id="next" class="btn btn-ghost" aria-label="Next">&rarr;</button>
+        </div>
+      </div>
+    </header>
+
+    <section class="signed-out" id="signed-out" hidden>
+      <h2>Sign in to continue.</h2>
+      <p>ai-apply uses GitHub OAuth to read your CV files and (optionally) open PRs back to your repo.</p>
+      <a class="btn btn-primary" href="/auth/github/login">Sign in with GitHub</a>
+    </section>
+
+    <section class="card" id="card" hidden>
+      <div class="card-head">
+        <h2 id="company-role"></h2>
+        <div class="meta" id="meta"></div>
+        <div class="cv-line" id="cv-line" hidden>
+          <span>Recommended CV:</span> <span class="cv-name" id="cv-name"></span>
+        </div>
+      </div>
+
+      <div class="actions actions-top">
+        <a id="job-link" class="btn btn-outline" target="_blank" rel="noopener">Open job posting &nearr;</a>
+      </div>
+
+      <textarea id="letter" spellcheck="true" aria-label="Cover letter body"></textarea>
+
+      <div class="actions">
+        <button type="button" id="copy" class="btn btn-outline">Copy text</button>
+        <button type="button" id="download" class="btn btn-outline">Download as PDF</button>
+        <button type="button" id="skip" class="btn btn-ghost">Skip</button>
+        <button type="button" id="save" class="btn btn-ghost">Save edits</button>
+        <button type="button" id="mark-sent" class="btn btn-primary">Mark sent &amp; next &rarr;</button>
+      </div>
+      <p class="status" id="status" aria-live="polite"></p>
+    </section>
+
+    <section class="empty" id="empty" hidden>
+      <h2>All caught up.</h2>
+      <p>Trigger a new <a href="/run.html">run</a> to fetch fresh listings.</p>
+    </section>
+
+    <section class="error" id="error" hidden>
+      <h2>Couldn&rsquo;t load applications.</h2>
+      <pre id="error-detail"></pre>
+    </section>
+  </main>
+
+  <div class="letter-print-area" id="print-area" aria-hidden="true"></div>
+
+  <script src="/static/shell.js" defer></script>
+  <script src="/static/apply.js" defer></script>
+</body>
+</html>

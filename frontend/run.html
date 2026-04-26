@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ai-apply · run</title>
+  <link rel="stylesheet" href="/static/apply.css" />
+  <link rel="stylesheet" href="/static/shell.css" />
+</head>
+<body>
+  <header class="shell-topbar">
+    <a class="shell-brand" href="/">ai-apply</a>
+    <nav class="shell-nav">
+      <a href="/">Applications</a>
+      <a href="/run.html">Run</a>
+      <a href="/settings.html">Settings</a>
+    </nav>
+    <div class="shell-user" id="shell-user"></div>
+  </header>
+
+  <main class="app">
+    <h1>Run</h1>
+    <section class="run-panel">
+      <p>One click: scrape every enabled search criterion, generate cover letters for new jobs, and queue them on the Applications page.</p>
+      <button id="start" class="btn btn-primary">Start run</button>
+      <p class="status" id="status" aria-live="polite"></p>
+      <div class="run-status" id="run-status"></div>
+    </section>
+
+    <section class="run-panel">
+      <h2>Recent runs</h2>
+      <div id="recent"></div>
+    </section>
+  </main>
+
+  <script src="/static/shell.js" defer></script>
+  <script src="/static/run.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ai-apply · settings</title>
+  <link rel="stylesheet" href="/static/apply.css" />
+  <link rel="stylesheet" href="/static/shell.css" />
+</head>
+<body>
+  <header class="shell-topbar">
+    <a class="shell-brand" href="/">ai-apply</a>
+    <nav class="shell-nav">
+      <a href="/">Applications</a>
+      <a href="/run.html">Run</a>
+      <a href="/settings.html">Settings</a>
+    </nav>
+    <div class="shell-user" id="shell-user"></div>
+  </header>
+
+  <main class="app">
+    <h1>Settings</h1>
+
+    <section class="settings-form" id="account">
+      <h2>Anthropic</h2>
+      <div class="field">
+        <label for="anthropic-key">API key</label>
+        <input id="anthropic-key" type="password" placeholder="sk-ant-…" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label for="model">Generation model</label>
+        <select id="model"></select>
+        <p class="model-blurb" id="model-blurb"></p>
+      </div>
+    </section>
+
+    <section class="settings-form" id="repo">
+      <h2>GitHub repo + CV directory</h2>
+      <div class="field">
+        <label for="repo-name">Repo (owner/name)</label>
+        <input id="repo-name" type="text" placeholder="octocat/cv" />
+      </div>
+      <div class="field">
+        <label for="cv-dir">CV directory</label>
+        <input id="cv-dir" type="text" placeholder="cv" />
+      </div>
+      <div class="field">
+        <label><input id="deliver-as-pr" type="checkbox" /> Deliver outputs as a PR back to the repo</label>
+      </div>
+    </section>
+
+    <button id="save" class="btn btn-primary">Save</button>
+    <p class="status" id="status" aria-live="polite"></p>
+
+    <section class="settings-form" id="criteria-section">
+      <h2>Search criteria</h2>
+      <div id="criteria-list"></div>
+      <h3 style="margin-top:24px;">Add new</h3>
+      <div class="field">
+        <label for="new-name">Name</label>
+        <input id="new-name" type="text" placeholder="Senior Python — Sydney" />
+      </div>
+      <div class="field">
+        <label for="new-site">Site</label>
+        <select id="new-site">
+          <option value="au">Seek (AU)</option>
+          <option value="nz">Seek (NZ)</option>
+          <option value="wanted">Wanted (KO)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="new-keywords">Keywords</label>
+        <input id="new-keywords" type="text" placeholder="python senior backend" />
+      </div>
+      <div class="field">
+        <label for="new-location">Location</label>
+        <input id="new-location" type="text" value="All Australia" />
+      </div>
+      <button id="add-criteria" class="btn btn-outline">Add</button>
+    </section>
+  </main>
+
+  <script src="/static/shell.js" defer></script>
+  <script src="/static/settings.js" defer></script>
+</body>
+</html>

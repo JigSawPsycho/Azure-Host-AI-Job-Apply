@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-apply"
+version = "0.1.0"
+description = "Multi-tenant web app: scrape job boards, draft cover letters with Claude, deliver via the UI or as a PR."
+requires-python = ">=3.11"
+dependencies = [
+    # web
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "itsdangerous>=2.2",
+    "python-multipart>=0.0.9",
+    # db
+    "sqlalchemy>=2.0",
+    # vendored scraper deps (mirror /scraper/pyproject.toml)
+    "httpx>=0.27",
+    "pyyaml>=6.0",
+    "selectolax>=0.3.21",
+    # secrets
+    "cryptography>=42",
+    # cv extraction
+    "pdfplumber>=0.11",
+    "python-docx>=1.1",
+    # llm
+    "anthropic>=0.40",
+    # config
+    "python-dotenv>=1.0",
+    # validation
+    "pydantic>=2.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["api*", "worker*", "db*"]
