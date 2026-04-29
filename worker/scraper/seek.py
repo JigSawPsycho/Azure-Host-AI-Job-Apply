@@ -34,13 +34,36 @@ SITE_CONFIG = {
 
 JOB_PATH_RE = re.compile(r"/job/(\d+)")
 
+BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
+
 DEFAULT_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    "User-Agent": BROWSER_USER_AGENT,
+    "Accept": (
+        "text/html,application/xhtml+xml,application/xml;q=0.9,"
+        "image/avif,image/webp,*/*;q=0.8"
     ),
-    "Accept": "application/json, text/plain, */*",
     "Accept-Language": "en-AU,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+    "Sec-Ch-Ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"macOS"',
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1",
+}
+
+SEARCH_HEADERS = {
+    "Accept": "application/json, text/plain, */*",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
 }
 
 WORK_TYPE_CODES = {
@@ -303,14 +326,36 @@ class SeekClient:
         if self._owns_client:
             self._client.close()
 
+    def _site_origin(self, site: str) -> str:
+        return SITE_CONFIG[site]["detail_url"].split("/job/")[0]
+
+    def _warm_session(self, site: str) -> None:
+        if getattr(self._client, "_seek_warmed", set()).__contains__(site):
+            return
+        try:
+            self._client.get(self._site_origin(site) + "/")
+        except httpx.HTTPError:
+            pass
+        warmed = getattr(self._client, "_seek_warmed", set())
+        warmed.add(site)
+        self._client._seek_warmed = warmed  # type: ignore[attr-defined]
+
     def search(self, criteria: SearchCriteria) -> list[JobListing]:
+        self._warm_session(criteria.site)
         url = SITE_CONFIG[criteria.site]["search_url"]
-        resp = self._client.get(url, params=build_search_params(criteria))
+        origin = self._site_origin(criteria.site)
+        headers = {**SEARCH_HEADERS, "Referer": origin + "/"}
+        resp = self._client.get(
+            url, params=build_search_params(criteria), headers=headers
+        )
         resp.raise_for_status()
         return parse_search_response(resp.json(), criteria)
 
     def fetch_description(self, listing: JobListing) -> str:
-        resp = self._client.get(listing.url)
+        site, _ = parse_listing_url(listing.url)
+        self._warm_session(site)
+        headers = {"Referer": self._site_origin(site) + "/"}
+        resp = self._client.get(listing.url, headers=headers)
         resp.raise_for_status()
         return parse_detail_html(resp.text)
 
@@ -323,7 +368,9 @@ class SeekClient:
 
     def fetch_by_url(self, url: str, search_name: str) -> JobListing:
         site, job_id = parse_listing_url(url)
+        self._warm_session(site)
         canonical = SITE_CONFIG[site]["detail_url"].format(job_id=job_id)
-        resp = self._client.get(canonical)
+        headers = {"Referer": self._site_origin(site) + "/"}
+        resp = self._client.get(canonical, headers=headers)
         resp.raise_for_status()
         return parse_detail_listing(resp.text, site, job_id, search_name)
