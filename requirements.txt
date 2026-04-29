@@ -1,0 +1,24 @@
+# Runtime dependencies — mirrors [project.dependencies] in pyproject.toml.
+# web
+fastapi>=0.115
+uvicorn[standard]>=0.30
+itsdangerous>=2.2
+python-multipart>=0.0.9
+# db
+sqlalchemy>=2.0
+# scraper
+httpx>=0.27
+pyyaml>=6.0
+selectolax>=0.3.21
+# secrets
+cryptography>=42
+# cv extraction
+pdfplumber>=0.11
+python-docx>=1.1
+# llm
+anthropic>=0.40
+# config
+python-dotenv>=1.0
+# validation
+pydantic>=2.6
+email-validator>=2.1
