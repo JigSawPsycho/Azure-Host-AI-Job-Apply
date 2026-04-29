@@ -6,49 +6,42 @@ Claude draft cover letters per role. Drafts surface in a port of the
 single-user Apply UI for review/edit/mark-sent. Optional PR delivery pushes
 artefacts back to the user's repo.
 
-This directory is structured to be lifted into its own repo with
-`git subtree split --prefix=ai-apply` (or `git filter-repo
---subdirectory-filter ai-apply`) once the initial implementation has settled.
-Nothing inside `ai-apply/` imports from outside `ai-apply/`.
-
 ## Layout
 
 ```
-ai-apply/
-  main.py                 ← uvicorn entrypoint for local dev
-  pyproject.toml          ← deps
-  .env.example            ← required config
-  api/                    ← FastAPI handlers
-    app.py                ← create_app()
-    auth.py               ← GitHub OAuth (full)
-    google_auth.py        ← Google OIDC (full; needs GOOGLE_CLIENT_ID)
-    email_auth.py         ← email/password stubs — wire to your IdP
-    secrets.py            ← envelope-encrypted secret store (local + KV stub)
-    settings_routes.py    ← API key, model choice, repo, criteria
-    runs.py               ← POST/GET runs
-    applications_routes.py← list/edit/mark-sent (port of /api/mark-sent)
-    models_const.py       ← Anthropic model dropdown catalogue
-  worker/                 ← background pipeline (FastAPI BackgroundTask for now)
-    pipeline.py           ← execute_run(run_id) orchestrator
-    scrape.py             ← programmatic adapter around vendored scrapers
-    github_repo.py        ← list+fetch CV files via GitHub API
-    extractors/extract.py ← md / pdf / docx → plaintext
-    generate.py           ← Anthropic call + anonymity enforcement
-    scraper/              ← vendored copy of /scraper/ (lift-and-shift)
-    prompts/              ← copy of /scripts/prompts/process-job.md
-    writing_guides/       ← en.md, ko.md
-  db/                     ← SQLAlchemy 2.0 models + engine
-  frontend/               ← static pages + JS port of website/apply.*
-    index.html, settings.html, run.html
-    login.html, signup.html
-    static/apply.{css,js}, settings.js, run.js, shell.{css,js}
-    static/login.js, signup.js
+main.py                 ← uvicorn entrypoint for local dev
+pyproject.toml          ← deps
+.env.example            ← required config
+api/                    ← FastAPI handlers
+  app.py                ← create_app()
+  auth.py               ← GitHub OAuth (full)
+  google_auth.py        ← Google OIDC (full; needs GOOGLE_CLIENT_ID)
+  email_auth.py         ← email/password stubs — wire to your IdP
+  secrets.py            ← envelope-encrypted secret store (local + KV stub)
+  settings_routes.py    ← API key, model choice, repo, criteria
+  runs.py               ← POST/GET runs
+  applications_routes.py← list/edit/mark-sent (port of /api/mark-sent)
+  models_const.py       ← Anthropic model dropdown catalogue
+worker/                 ← background pipeline (FastAPI BackgroundTask for now)
+  pipeline.py           ← execute_run(run_id) orchestrator
+  scrape.py             ← programmatic adapter around vendored scrapers
+  github_repo.py        ← list+fetch CV files via GitHub API
+  extractors/extract.py ← md / pdf / docx → plaintext
+  generate.py           ← Anthropic call + anonymity enforcement
+  scraper/              ← vendored copy of /scraper/ (lift-and-shift)
+  prompts/              ← copy of /scripts/prompts/process-job.md
+  writing_guides/       ← en.md, ko.md
+db/                     ← SQLAlchemy 2.0 models + engine
+frontend/               ← static pages + JS port of website/apply.*
+  index.html, settings.html, run.html
+  login.html, signup.html
+  static/apply.{css,js}, settings.js, run.js, shell.{css,js}
+  static/login.js, signup.js
 ```
 
 ## Local quickstart
 
 ```bash
-cd ai-apply
 python -m venv .venv && source .venv/bin/activate
 pip install -e .
 
