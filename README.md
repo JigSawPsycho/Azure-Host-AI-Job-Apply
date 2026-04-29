@@ -43,7 +43,7 @@ frontend/               ← static pages + JS port of website/apply.*
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -e .
+pip install -r requirements.txt   # or: pip install -e .
 
 cp .env.example .env
 # fill in SESSION_SECRET, SECRETS_MASTER_KEY, and GitHub OAuth IDs
@@ -100,10 +100,22 @@ before mark-sent.
 
 ## Tests
 
+Install runtime + test dependencies, then run pytest from the repo root:
+
 ```bash
-pip install -e '.[dev]'
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt   # pulls in requirements.txt + pytest
 pytest
 ```
+
+`requirements-dev.txt` includes `-r requirements.txt`, so a single install
+covers both the app and the test suite. Alternatively, `pip install -e '.[dev]'`
+works via the `pyproject.toml` extras.
+
+`tests/conftest.py` sets the env vars the app requires (`SESSION_SECRET`,
+`SECRETS_MASTER_KEY`, `GITHUB_CLIENT_ID/SECRET`) and points `DATABASE_URL` at
+a per-run temporary SQLite file, so tests need no `.env` and leave no state
+behind. Run a single file or test with e.g. `pytest tests/test_api.py -k anonymity -vv`.
 
 ## Production deployment (Azure)
 
