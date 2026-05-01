@@ -351,18 +351,26 @@ class SeekClient:
         resp.raise_for_status()
         return parse_search_response(resp.json(), criteria)
 
+    def _detail_headers(self, site: str) -> dict[str, str]:
+        return {
+            "Referer": self._site_origin(site) + "/jobs",
+            "Sec-Fetch-Site": "same-origin",
+        }
+
     def fetch_description(self, listing: JobListing) -> str:
         site, _ = parse_listing_url(listing.url)
         self._warm_session(site)
-        headers = {"Referer": self._site_origin(site) + "/"}
-        resp = self._client.get(listing.url, headers=headers)
+        resp = self._client.get(listing.url, headers=self._detail_headers(site))
         resp.raise_for_status()
         return parse_detail_html(resp.text)
 
     def hydrate(self, listings: Iterable[JobListing]) -> list[JobListing]:
         hydrated: list[JobListing] = []
         for listing in listings:
-            listing.description = self.fetch_description(listing)
+            try:
+                listing.description = self.fetch_description(listing)
+            except httpx.HTTPError:
+                listing.description = ""
             hydrated.append(listing)
         return hydrated
 
@@ -370,7 +378,6 @@ class SeekClient:
         site, job_id = parse_listing_url(url)
         self._warm_session(site)
         canonical = SITE_CONFIG[site]["detail_url"].format(job_id=job_id)
-        headers = {"Referer": self._site_origin(site) + "/"}
-        resp = self._client.get(canonical, headers=headers)
+        resp = self._client.get(canonical, headers=self._detail_headers(site))
         resp.raise_for_status()
         return parse_detail_listing(resp.text, site, job_id, search_name)

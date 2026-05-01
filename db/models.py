@@ -72,6 +72,12 @@ class User(Base):
     # artefact the employer can see.
     generation_model: Mapped[str] = mapped_column(String(80), default="claude-sonnet-4-6")
 
+    # Per-run caps. max_jobs_per_run bounds how many listings the scraper
+    # keeps; max_drafts_per_run bounds how many cover letters get generated
+    # (and therefore how many Anthropic calls are billed) per run.
+    max_jobs_per_run: Mapped[int] = mapped_column(Integer, default=25, server_default="25")
+    max_drafts_per_run: Mapped[int] = mapped_column(Integer, default=25, server_default="25")
+
     # Per-user UI/feature settings (theme, default language, etc.).
     settings: Mapped[dict] = mapped_column(JSON, default=dict)
 

@@ -7,8 +7,10 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from db import init_db
+from .startup import recover_orphaned_runs
 from . import (
     applications_routes,
     auth,
@@ -26,9 +28,22 @@ def create_app() -> FastAPI:
     secret = os.environ.get("SESSION_SECRET")
     if not secret:
         raise RuntimeError("SESSION_SECRET is not set")
-    app.add_middleware(SessionMiddleware, secret_key=secret, same_site="lax")
+    https_only = os.environ.get("SESSION_HTTPS_ONLY", "0") == "1"
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=secret,
+        same_site="lax",
+        https_only=https_only,
+    )
+    if os.environ.get("TRUST_PROXY_HEADERS", "0") == "1":
+        app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
     init_db()
+    recover_orphaned_runs()
+
+    @app.get("/healthz")
+    def healthz() -> dict:
+        return {"ok": True}
 
     app.include_router(auth.router)
     app.include_router(google_auth.router)

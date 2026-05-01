@@ -35,7 +35,7 @@ router = APIRouter(prefix="/auth/github", tags=["auth"])
 CLIENT_ID = os.environ.get("GITHUB_CLIENT_ID", "")
 CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET", "")
 REDIRECT_URI = os.environ.get("GITHUB_REDIRECT_URI", "http://localhost:8000/auth/github/callback")
-DEFAULT_SCOPES = "read:user user:email"
+DEFAULT_SCOPES = "read:user user:email repo"
 PR_DELIVERY_SCOPES = "read:user user:email repo"
 
 
@@ -96,6 +96,19 @@ def callback(
         user = session.get(User, existing_user_id)
         if user is None:
             raise HTTPException(401, "session refers to a missing user")
+        # Collision: this GitHub identity already belongs to a different
+        # user row. Don't UPDATE — that violates the unique index and
+        # would silently rewrite ownership. Switch the session to that
+        # row instead (same human, signed up twice via different
+        # providers). Real account merge is a separate flow.
+        owner = (
+            session.query(User)
+            .filter(User.github_id == gh_user["id"], User.id != user.id)
+            .one_or_none()
+        )
+        if owner is not None:
+            user = owner
+            existing_user_id = owner.id
         user.github_id = gh_user["id"]
         user.github_login = gh_user["login"]
         if gh_user.get("email") and not user.email:

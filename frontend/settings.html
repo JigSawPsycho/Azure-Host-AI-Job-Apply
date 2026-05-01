@@ -60,8 +60,31 @@
       </div>
     </section>
 
+    <section class="settings-form" id="run-limits">
+      <h2>Run limits</h2>
+      <div class="field">
+        <label for="max-jobs">Max jobs fetched per run</label>
+        <input id="max-jobs" type="number" min="1" max="200" />
+      </div>
+      <div class="field">
+        <label for="max-drafts">Max cover-letter drafts per run</label>
+        <input id="max-drafts" type="number" min="1" max="200" />
+        <p class="model-blurb">Each draft = one Anthropic API call.</p>
+      </div>
+    </section>
+
     <button id="save" class="btn btn-primary">Save</button>
     <p class="status" id="status" aria-live="polite"></p>
+
+    <section class="settings-form" id="job-history">
+      <h2>Job history</h2>
+      <p class="model-blurb">
+        "Seen" jobs are everything the scraper has saved for you (used to
+        dedupe future runs). "Rejected" are applications you've skipped.
+      </p>
+      <button id="clear-seen" class="btn btn-outline">Clear seen jobs</button>
+      <button id="clear-rejected" class="btn btn-outline" style="margin-left:8px;">Clear rejected applications</button>
+    </section>
 
     <section class="settings-form" id="criteria-section">
       <h2>Search criteria</h2>

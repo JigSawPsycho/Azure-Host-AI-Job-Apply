@@ -14,23 +14,10 @@
     <section class="auth-card">
       <h1>Create your account</h1>
 
-      <form id="email-form" class="auth-form" novalidate>
-        <div class="field">
-          <label for="email">Email</label>
-          <input id="email" name="email" type="email" autocomplete="email" required />
-        </div>
-        <div class="field">
-          <label for="password">Password</label>
-          <input id="password" name="password" type="password" autocomplete="new-password" minlength="8" required />
-          <p class="model-blurb">At least 8 characters.</p>
-        </div>
-        <button type="submit" class="btn btn-primary auth-submit">Create account</button>
-        <p class="status" id="status" aria-live="polite"></p>
-      </form>
-
-      <div class="auth-divider"><span>or</span></div>
-
       <div class="auth-providers">
+        <a class="btn btn-primary auth-provider" href="/auth/ms/signup">
+          <span class="provider-glyph">@</span> Sign up with email
+        </a>
         <a class="btn btn-outline auth-provider" href="/auth/google/login">
           <span class="provider-glyph">G</span> Continue with Google
         </a>
@@ -45,6 +32,5 @@
     </section>
   </main>
 
-  <script src="/static/signup.js" defer></script>
 </body>
 </html>

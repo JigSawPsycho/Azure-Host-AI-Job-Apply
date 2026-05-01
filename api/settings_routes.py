@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from db import Criteria, User, get_session
+from db import Application, ApplicationStatus, Criteria, Job, User, get_session
 from .auth import current_user
 from .models_const import ALLOWED_MODEL_IDS, MODEL_OPTIONS
 from .secrets import get_store
@@ -29,6 +29,8 @@ class SettingsOut(BaseModel):
     repo_full_name: str
     cv_dir: str
     deliver_as_pr: bool
+    max_jobs_per_run: int
+    max_drafts_per_run: int
 
 
 class SettingsUpdate(BaseModel):
@@ -37,6 +39,8 @@ class SettingsUpdate(BaseModel):
     repo_full_name: str | None = None
     cv_dir: str | None = None
     deliver_as_pr: bool | None = None
+    max_jobs_per_run: int | None = Field(default=None, ge=1, le=200)
+    max_drafts_per_run: int | None = Field(default=None, ge=1, le=200)
 
 
 class CriteriaIn(BaseModel):
@@ -69,6 +73,8 @@ def read_settings(user: User = Depends(current_user)) -> SettingsOut:
         repo_full_name=user.repo_link.repo_full_name if user.repo_link else "",
         cv_dir=user.repo_link.cv_dir if user.repo_link else "cv",
         deliver_as_pr=user.repo_link.deliver_as_pr if user.repo_link else False,
+        max_jobs_per_run=user.max_jobs_per_run,
+        max_drafts_per_run=user.max_drafts_per_run,
     )
 
 
@@ -86,6 +92,12 @@ def update_settings(
         if user.anthropic_key_ref:
             store.delete(user.anthropic_key_ref)
         user.anthropic_key_ref = store.put(f"anthropic-{user.id}", payload.anthropic_key)
+
+    if payload.max_jobs_per_run is not None:
+        user.max_jobs_per_run = payload.max_jobs_per_run
+
+    if payload.max_drafts_per_run is not None:
+        user.max_drafts_per_run = payload.max_drafts_per_run
 
     if payload.generation_model is not None:
         if payload.generation_model not in ALLOWED_MODEL_IDS:
@@ -152,6 +164,45 @@ def update_criteria(
         setattr(row, k, v)
     session.commit()
     return CriteriaOut(id=row.id, **payload.model_dump())
+
+
+@router.post("/clear-seen")
+def clear_seen(
+    user: User = Depends(current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Delete all Job rows for this user, resetting the scraper dedup set.
+
+    Cascades to Application rows. After this, previously-scraped listings
+    can be re-scraped on the next run.
+    """
+    deleted = session.query(Job).filter_by(user_id=user.id).delete(synchronize_session=False)
+    session.commit()
+    return {"deleted": deleted}
+
+
+@router.post("/clear-rejected")
+def clear_rejected(
+    user: User = Depends(current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Delete jobs whose application was marked skipped (rejected by user)."""
+    job_ids = [
+        jid
+        for (jid,) in session.query(Job.id)
+        .join(Application, Application.job_id == Job.id)
+        .filter(Job.user_id == user.id, Application.status == ApplicationStatus.skipped)
+        .all()
+    ]
+    if not job_ids:
+        return {"deleted": 0}
+    deleted = (
+        session.query(Job)
+        .filter(Job.id.in_(job_ids))
+        .delete(synchronize_session=False)
+    )
+    session.commit()
+    return {"deleted": deleted}
 
 
 @router.delete("/criteria/{cid}")

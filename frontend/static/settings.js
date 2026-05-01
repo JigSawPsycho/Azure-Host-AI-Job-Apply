@@ -11,6 +11,8 @@
     repo: document.getElementById("repo-name"),
     cvDir: document.getElementById("cv-dir"),
     pr: document.getElementById("deliver-as-pr"),
+    maxJobs: document.getElementById("max-jobs"),
+    maxDrafts: document.getElementById("max-drafts"),
     save: document.getElementById("save"),
     status: document.getElementById("status"),
     list: document.getElementById("criteria-list"),
@@ -19,6 +21,8 @@
     newKeywords: document.getElementById("new-keywords"),
     newLocation: document.getElementById("new-location"),
     addCriteria: document.getElementById("add-criteria"),
+    clearSeen: document.getElementById("clear-seen"),
+    clearRejected: document.getElementById("clear-rejected"),
   };
 
   let modelBlurbs = {};
@@ -53,6 +57,8 @@
     els.repo.value = s.repo_full_name || "";
     els.cvDir.value = s.cv_dir || "cv";
     els.pr.checked = !!s.deliver_as_pr;
+    els.maxJobs.value = s.max_jobs_per_run;
+    els.maxDrafts.value = s.max_drafts_per_run;
 
     if (s.github_connected) {
       const who = s.github_login ? "@" + s.github_login : "your GitHub account";
@@ -108,6 +114,8 @@
       repo_full_name: els.repo.value.trim(),
       cv_dir: els.cvDir.value.trim() || "cv",
       deliver_as_pr: els.pr.checked,
+      max_jobs_per_run: parseInt(els.maxJobs.value, 10),
+      max_drafts_per_run: parseInt(els.maxDrafts.value, 10),
     };
     if (els.anthropic.value) payload.anthropic_key = els.anthropic.value;
     setStatus("Saving…");
@@ -144,6 +152,24 @@
     els.newKeywords.value = "";
     setStatus("Added", "ok");
     loadCriteria();
+  });
+
+  els.clearSeen.addEventListener("click", async () => {
+    if (!confirm("Clear all seen jobs? This deletes every scraped listing and its generated cover letter (including unsent drafts). The scraper can re-find them on the next run.")) return;
+    setStatus("Clearing seen…");
+    const res = await fetch("/api/settings/clear-seen", { method: "POST" });
+    if (!res.ok) { setStatus(`Clear failed: ${res.status}`, "err"); return; }
+    const body = await res.json();
+    setStatus(`Cleared ${body.deleted} seen jobs`, "ok");
+  });
+
+  els.clearRejected.addEventListener("click", async () => {
+    if (!confirm("Clear all rejected applications? This deletes jobs you skipped so they can be re-considered on a future run.")) return;
+    setStatus("Clearing rejected…");
+    const res = await fetch("/api/settings/clear-rejected", { method: "POST" });
+    if (!res.ok) { setStatus(`Clear failed: ${res.status}`, "err"); return; }
+    const body = await res.json();
+    setStatus(`Cleared ${body.deleted} rejected applications`, "ok");
   });
 
   (async () => {

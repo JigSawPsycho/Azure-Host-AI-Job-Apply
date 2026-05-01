@@ -22,8 +22,9 @@ def test_login_redirects_to_github():
     resp = _client().get("/auth/github/login", follow_redirects=False)
     assert resp.status_code == 307
     assert resp.headers["location"].startswith("https://github.com/login/oauth/authorize")
-    # Default scope: no `repo`.
-    assert "repo" not in resp.headers["location"].split("scope=")[1].split("&")[0]
+    # Default scope now includes `repo` — needed for CV reads on private repos.
+    scope = resp.headers["location"].split("scope=")[1].split("&")[0]
+    assert "repo" in scope
 
 
 def test_login_with_pr_delivery_requests_repo_scope():
@@ -46,7 +47,8 @@ def test_login_page_served():
     body = resp.text
     assert "Continue with Google" in body
     assert "Continue with GitHub" in body
-    assert 'id="email-form"' in body
+    assert "Continue with email" in body
+    assert "/auth/ms/login" in body
 
 
 def test_signup_page_served():
@@ -54,20 +56,15 @@ def test_signup_page_served():
     assert resp.status_code == 200
 
 
-def test_email_login_returns_501_until_wired():
-    resp = _client().post(
-        "/auth/email/login",
-        json={"email": "test@example.com", "password": "hunter2hunter2"},
-    )
+def test_ms_login_returns_501_when_unconfigured():
+    # Default test env has no MS_TENANT_ID — expect a clear 501.
+    resp = _client().get("/auth/ms/login", follow_redirects=False)
     assert resp.status_code == 501
-    assert "not wired up" in resp.json()["detail"].lower()
+    assert "not configured" in resp.json()["detail"].lower()
 
 
-def test_email_signup_returns_501_until_wired():
-    resp = _client().post(
-        "/auth/email/signup",
-        json={"email": "new@example.com", "password": "hunter2hunter2"},
-    )
+def test_ms_signup_returns_501_when_unconfigured():
+    resp = _client().get("/auth/ms/signup", follow_redirects=False)
     assert resp.status_code == 501
 
 

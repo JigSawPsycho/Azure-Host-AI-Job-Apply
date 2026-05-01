@@ -32,8 +32,6 @@ from .scraper.models import SearchCriteria
 
 log = logging.getLogger("ai-apply.worker")
 
-MAX_JOBS_PER_RUN = 25
-
 
 def execute_run(run_id: int) -> None:
     session: Session = SessionLocal()
@@ -83,7 +81,7 @@ def _run(session: Session, run_id: int) -> None:
         _fail(session, run, f"scrape failed: {exc}")
         return
 
-    listings = listings[:MAX_JOBS_PER_RUN]
+    listings = listings[: user.max_jobs_per_run]
     run.jobs_found = len(listings)
     session.commit()
     if not listings:
@@ -106,7 +104,10 @@ def _run(session: Session, run_id: int) -> None:
     run.status = RunStatus.generating
     session.commit()
     generated = 0
+    draft_cap = user.max_drafts_per_run
     for listing in listings:
+        if generated >= draft_cap:
+            break
         job = Job(
             user_id=user.id,
             source=listing.search if hasattr(listing, "search") else "",

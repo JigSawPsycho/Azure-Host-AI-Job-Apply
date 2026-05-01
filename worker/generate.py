@@ -31,6 +31,10 @@ The letter must read as if the candidate wrote it themselves. Therefore:
 - Do not include meta-commentary about how the letter was generated,
   drafting notes, hedges, or disclaimers about your capabilities.
 - Sign off with the candidate's name only.
+- In the sign-off, place the candidate's name on the line immediately
+  following the closing (e.g. "Regards,") with no blank line between
+  them. End each of those two lines with two trailing spaces so they
+  render as separate lines in markdown.
 
 Note: the candidate may legitimately mention Claude, Anthropic, or any
 other product/company by name if it's relevant to the role they're
@@ -53,8 +57,8 @@ class GenerationError(Exception):
 
 
 def _load_system_prompt(language: str) -> str:
-    base = (PROMPT_DIR / "process-job.md").read_text()
-    guide = (GUIDE_DIR / f"{language}.md").read_text()
+    base = (PROMPT_DIR / "process-job.md").read_text(encoding="utf-8")
+    guide = (GUIDE_DIR / f"{language}.md").read_text(encoding="utf-8")
     return f"{base}\n\n---\n\n{guide}\n\n---\n\n{ANONYMITY_CLAUSE}"
 
 
@@ -103,7 +107,7 @@ def generate_cover_letter(
     raw = "".join(block.text for block in resp.content if getattr(block, "type", None) == "text")
 
     chosen, body = _split_response(raw, fallback_cv=cvs[0].name)
-    return GenerationResult(chosen_cv=chosen, body_md=body.strip(), model_used=model_id)
+    return GenerationResult(chosen_cv=chosen, body_md=_trim_letter(body), model_used=model_id)
 
 
 def _split_response(raw: str, fallback_cv: str) -> tuple[str, str]:
@@ -115,3 +119,16 @@ def _split_response(raw: str, fallback_cv: str) -> tuple[str, str]:
     chosen = match.group(1).strip()
     body = raw[match.end():].lstrip("\n")
     return chosen, body
+
+
+def _trim_letter(body: str) -> str:
+    """Strip preamble (H1, jobId comment, title/company header) and trailing
+    jobId comment so the stored body starts at the salutation."""
+    import re
+
+    cleaned = re.sub(r"<!--\s*jobId:.*?-->", "", body, flags=re.IGNORECASE)
+    lines = cleaned.splitlines()
+    for i, line in enumerate(lines):
+        if re.match(r"\s*(Dear\b|To whom\b|Hello\b|Hi\b)", line, flags=re.IGNORECASE):
+            return "\n".join(lines[i:]).strip()
+    return cleaned.strip()

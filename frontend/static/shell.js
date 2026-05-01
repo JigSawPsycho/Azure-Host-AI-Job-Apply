@@ -19,7 +19,23 @@
       return;
     }
     const settings = await res.json();
-    userEl.textContent = settings.github_login ? "@" + settings.github_login : settings.display_name;
+    const label = settings.github_login ? "@" + settings.github_login : settings.display_name;
+    userEl.innerHTML = "";
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "shell-user-name";
+    nameSpan.textContent = label;
+    const logoutBtn = document.createElement("button");
+    logoutBtn.type = "button";
+    logoutBtn.className = "shell-logout";
+    logoutBtn.textContent = "Log out";
+    logoutBtn.addEventListener("click", async () => {
+      logoutBtn.disabled = true;
+      try {
+        await fetch("/auth/github/logout", { method: "POST" });
+      } catch (_) {}
+      window.location.replace("/login.html");
+    });
+    userEl.append(nameSpan, logoutBtn);
     window.__aiApplySettings = settings;
   } catch (err) {
     userEl.textContent = "offline";

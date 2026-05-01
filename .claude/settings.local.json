@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import ast; [ast.parse\\(open\\(p\\).read\\(\\)\\) for p in ['api/app.py','api/secrets.py','main.py']]; print\\('ok'\\)\")",
+      "Bash(python -c \"import ast,io; [ast.parse\\(io.open\\(p,encoding='utf-8'\\).read\\(\\)\\) for p in ['api/app.py','api/secrets.py','main.py']]; print\\('ok'\\)\")",
+      "Bash(pytest -q)",
+      "Bash(.venv/Scripts/python.exe -m pytest -q)"
+    ]
+  }
+}

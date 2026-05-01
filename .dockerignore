@@ -1,0 +1,17 @@
+.git
+.github
+.venv
+__pycache__
+*.pyc
+*.pyo
+data
+tests
+.env
+.env.*
+!.env.example
+*.md
+img */
+webapp-config*.json
+infra
+.pytest_cache
+.mypy_cache
