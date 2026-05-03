@@ -301,26 +301,50 @@ def _credit_for_session(session: Session, cs) -> None:
     session_id = _field(cs, "id")
     if not session_id:
         return
-    purchase = (
-        session.query(TokenPurchase).filter_by(stripe_session_id=session_id).one_or_none()
-    )
-    if purchase is None:
-        log.warning("webhook for unknown session %s", session_id)
-        return
-    if purchase.status == TokenPurchaseStatus.paid:
-        return  # already credited; replay is a no-op
     if _field(cs, "payment_status") != "paid":
         return  # only credit on actual payment
 
+    # Atomically claim the purchase: flip pending → paid in a single UPDATE
+    # and only credit if WE were the one who flipped it. This closes the race
+    # between the Stripe webhook and /checkout/verify firing concurrently —
+    # without it both readers see status=pending and double-credit.
+    paid_at = datetime.now(timezone.utc)
+    payment_intent = _field(cs, "payment_intent")
+    rowcount = (
+        session.query(TokenPurchase)
+        .filter(
+            TokenPurchase.stripe_session_id == session_id,
+            TokenPurchase.status == TokenPurchaseStatus.pending,
+        )
+        .update(
+            {
+                TokenPurchase.status: TokenPurchaseStatus.paid,
+                TokenPurchase.paid_at: paid_at,
+                TokenPurchase.stripe_payment_intent_id: payment_intent,
+            },
+            synchronize_session=False,
+        )
+    )
+    if rowcount == 0:
+        # Either unknown session, or already paid by a concurrent caller.
+        purchase = (
+            session.query(TokenPurchase)
+            .filter_by(stripe_session_id=session_id)
+            .one_or_none()
+        )
+        if purchase is None:
+            log.warning("webhook for unknown session %s", session_id)
+        session.commit()
+        return
+
+    purchase = (
+        session.query(TokenPurchase).filter_by(stripe_session_id=session_id).one()
+    )
     user = session.get(User, purchase.user_id)
     if user is None:
         log.warning("purchase %s references missing user", purchase.id)
+        session.commit()
         return
-
-    purchase.status = TokenPurchaseStatus.paid
-    purchase.paid_at = datetime.now(timezone.utc)
-    purchase.stripe_payment_intent_id = _field(cs, "payment_intent")
-    session.flush()  # so credit_tokens can reference purchase.id
 
     credit_tokens(
         session,
