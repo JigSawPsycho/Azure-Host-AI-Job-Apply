@@ -22,7 +22,16 @@
     <h1>Run</h1>
     <section class="run-panel">
       <p>One click: scrape every enabled search criterion, generate cover letters for new jobs, and queue them on the Applications page.</p>
-      <button id="start" class="btn btn-primary">Start run</button>
+      <div id="run-estimate" class="run-estimate" hidden>
+        <div class="run-estimate-row">
+          <span class="muted">Estimated cost</span>
+          <span class="est-value">~<strong id="est-amount">0</strong><span class="muted">tokens</span></span>
+        </div>
+        <div class="est-meta" id="est-meta"></div>
+      </div>
+      <div id="run-controls">
+        <button id="start" class="btn btn-primary">Start run</button>
+      </div>
       <p class="status" id="status" aria-live="polite"></p>
       <div class="run-status" id="run-status"></div>
     </section>
@@ -33,6 +42,7 @@
     </section>
   </main>
 
+  <script src="/static/toast.js" defer></script>
   <script src="/static/shell.js" defer></script>
   <script src="/static/run.js" defer></script>
 </body>
