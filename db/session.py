@@ -70,6 +70,9 @@ def _ensure_user_columns() -> None:
     additions = {
         "max_jobs_per_run": "INTEGER NOT NULL DEFAULT 25",
         "max_drafts_per_run": "INTEGER NOT NULL DEFAULT 25",
+        "billing_mode": "VARCHAR(16) NOT NULL DEFAULT 'tokens'",
+        "token_balance_centitokens": "INTEGER NOT NULL DEFAULT 0",
+        "stripe_customer_id": "VARCHAR(120)",
     }
     with engine.begin() as conn:
         for name, ddl in additions.items():

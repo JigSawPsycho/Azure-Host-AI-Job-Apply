@@ -14,6 +14,7 @@ from .startup import recover_orphaned_runs
 from . import (
     applications_routes,
     auth,
+    billing,
     email_auth,
     google_auth,
     runs,
@@ -49,6 +50,7 @@ def create_app() -> FastAPI:
     app.include_router(google_auth.router)
     app.include_router(email_auth.router)
     app.include_router(settings_routes.router)
+    app.include_router(billing.router)
     app.include_router(runs.router)
     app.include_router(applications_routes.router)
 

@@ -17,6 +17,7 @@ class ModelOptionOut(BaseModel):
     id: str
     label: str
     blurb: str
+    cost_centitokens: int
 
 
 class SettingsOut(BaseModel):

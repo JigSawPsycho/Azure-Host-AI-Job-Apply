@@ -7,9 +7,10 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from db import Run, RunStatus, User, get_session
+from db import BillingMode, Run, RunStatus, User, get_session
 from worker.pipeline import execute_run
 from .auth import current_user
+from .models_const import COST_BY_MODEL
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
 
@@ -42,8 +43,18 @@ def start_run(
     user: User = Depends(current_user),
     session: Session = Depends(get_session),
 ) -> RunOut:
-    if not user.anthropic_key_ref:
-        raise HTTPException(400, "set your Anthropic API key in settings first")
+    billing_mode = user.billing_mode or BillingMode.tokens
+    if billing_mode == BillingMode.byok:
+        if not user.anthropic_key_ref:
+            raise HTTPException(
+                400, "set your Anthropic API key in settings first (bring-your-own-key mode)"
+            )
+    else:
+        cost = COST_BY_MODEL.get(user.generation_model, 100)
+        if (user.token_balance_centitokens or 0) < cost:
+            raise HTTPException(
+                402, "out of tokens — top up before starting a run, or switch to bring-your-own-key"
+            )
     if not user.repo_link or not user.repo_link.repo_full_name:
         raise HTTPException(400, "connect a GitHub repo and pick a CV directory first")
     in_progress = (

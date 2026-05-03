@@ -52,6 +52,33 @@ class RunStatus(str, enum.Enum):
     failed = "failed"
 
 
+class BillingMode(str, enum.Enum):
+    """How a user pays for cover-letter generation.
+
+    - tokens: deduct from User.token_balance_centitokens; Anthropic calls
+      use the host's ANTHROPIC_HOST_API_KEY.
+    - byok: use the user's own anthropic_key_ref; no token deduction.
+    """
+
+    tokens = "tokens"
+    byok = "byok"
+
+
+class TokenLedgerReason(str, enum.Enum):
+    purchase = "purchase"
+    generation = "generation"
+    refund = "refund"
+    admin_grant = "admin_grant"
+    admin_debit = "admin_debit"
+
+
+class TokenPurchaseStatus(str, enum.Enum):
+    pending = "pending"
+    paid = "paid"
+    expired = "expired"
+    failed = "failed"
+
+
 class User(Base):
     __tablename__ = "user"
 
@@ -78,6 +105,14 @@ class User(Base):
     max_jobs_per_run: Mapped[int] = mapped_column(Integer, default=25, server_default="25")
     max_drafts_per_run: Mapped[int] = mapped_column(Integer, default=25, server_default="25")
 
+    # Billing. Tokens are stored as integer centitokens (×100) so 1.0 token = 100,
+    # 0.25 = 25. Avoids float drift when crediting/debiting.
+    billing_mode: Mapped[BillingMode] = mapped_column(
+        Enum(BillingMode), default=BillingMode.tokens, server_default=BillingMode.tokens.value
+    )
+    token_balance_centitokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    stripe_customer_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
     # Per-user UI/feature settings (theme, default language, etc.).
     settings: Mapped[dict] = mapped_column(JSON, default=dict)
 
@@ -87,6 +122,8 @@ class User(Base):
     criteria: Mapped[list["Criteria"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     jobs: Mapped[list["Job"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     runs: Mapped[list["Run"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    token_ledger: Mapped[list["TokenLedgerEntry"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    token_purchases: Mapped[list["TokenPurchase"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class RepoLink(Base):
@@ -180,3 +217,59 @@ class Run(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     user: Mapped[User] = relationship(back_populates="runs")
+
+
+class TokenPurchase(Base):
+    """One row per Stripe Checkout session.
+
+    Created with status=pending when checkout starts; flipped to paid by
+    the webhook handler, which also writes the matching credit ledger
+    entry. The unique constraint on stripe_session_id makes the webhook
+    idempotent — Stripe retries replayed events safely.
+    """
+
+    __tablename__ = "token_purchase"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), index=True)
+    stripe_session_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    stripe_payment_intent_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    package_key: Mapped[str] = mapped_column(String(40))
+    centitokens: Mapped[int] = mapped_column(Integer)
+    amount_cents: Mapped[int] = mapped_column(Integer)
+    currency: Mapped[str] = mapped_column(String(8), default="usd")
+    status: Mapped[TokenPurchaseStatus] = mapped_column(
+        Enum(TokenPurchaseStatus), default=TokenPurchaseStatus.pending
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    user: Mapped[User] = relationship(back_populates="token_purchases")
+
+
+class TokenLedgerEntry(Base):
+    """Immutable per-user audit trail of token movements.
+
+    Every change to User.token_balance_centitokens has a matching row
+    here. Reasons: purchase (+ from Stripe), generation (- per call),
+    refund (+ from generation failure), admin_grant/admin_debit.
+    """
+
+    __tablename__ = "token_ledger"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), index=True)
+    delta_centitokens: Mapped[int] = mapped_column(Integer)  # +credit / -debit
+    balance_after_centitokens: Mapped[int] = mapped_column(Integer)
+    reason: Mapped[TokenLedgerReason] = mapped_column(Enum(TokenLedgerReason))
+    purchase_id: Mapped[int | None] = mapped_column(
+        ForeignKey("token_purchase.id", ondelete="SET NULL"), nullable=True
+    )
+    application_id: Mapped[int | None] = mapped_column(
+        ForeignKey("application.id", ondelete="SET NULL"), nullable=True
+    )
+    model_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    user: Mapped[User] = relationship(back_populates="token_ledger")
