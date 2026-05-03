@@ -15,6 +15,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -47,7 +48,6 @@ class RunStatus(str, enum.Enum):
     scraping = "scraping"
     fetching_cvs = "fetching_cvs"
     generating = "generating"
-    delivering = "delivering"
     finished = "finished"
     failed = "failed"
 
@@ -88,6 +88,11 @@ class User(Base):
     github_id: Mapped[int | None] = mapped_column(Integer, unique=True, index=True, nullable=True)
     github_login: Mapped[str | None] = mapped_column(String(80), nullable=True)
     google_id: Mapped[str | None] = mapped_column(String(80), unique=True, index=True, nullable=True)
+    # Entra Object ID — set only on email/password signup. Lets us tell apart
+    # an email-signup user (who later connects GitHub) from a github-signup user.
+    entra_oid: Mapped[str | None] = mapped_column(String(80), unique=True, index=True, nullable=True)
+    # Email is canonical account ID; users sign up with exactly one provider
+    # and must use that same provider for every subsequent login.
     email: Mapped[str | None] = mapped_column(String(255), index=True, nullable=True)
 
     # Reference to a managed-secrets entry (e.g. Azure Key Vault secret name).
@@ -124,6 +129,7 @@ class User(Base):
     runs: Mapped[list["Run"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     token_ledger: Mapped[list["TokenLedgerEntry"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     token_purchases: Mapped[list["TokenPurchase"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    uploaded_cvs: Mapped[list["UploadedCV"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class RepoLink(Base):
@@ -133,11 +139,32 @@ class RepoLink(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), unique=True)
     repo_full_name: Mapped[str] = mapped_column(String(255))  # e.g. "octocat/cv"
     cv_dir: Mapped[str] = mapped_column(String(255), default="cv")
-    deliver_as_pr: Mapped[bool] = mapped_column(Boolean, default=False)
     # Reference to GitHub OAuth token in secret store, not raw token.
     github_token_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     user: Mapped[User] = relationship(back_populates="repo_link")
+
+
+class UploadedCV(Base):
+    """User-uploaded CV / CLAUDE.md file stored directly in DB.
+
+    Alternative to GitHub repo integration. When present, the worker
+    pipeline reads from this table instead of fetching from GitHub.
+    """
+
+    __tablename__ = "uploaded_cv"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    content: Mapped[bytes] = mapped_column(LargeBinary)
+    sha: Mapped[str] = mapped_column(String(64))
+    size: Mapped[int] = mapped_column(Integer, default=0)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    user: Mapped[User] = relationship(back_populates="uploaded_cvs")
+
+    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_uploaded_cv_user_name"),)
 
 
 class Criteria(Base):
@@ -193,11 +220,10 @@ class Application(Base):
     edited_body_md: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[ApplicationStatus] = mapped_column(Enum(ApplicationStatus), default=ApplicationStatus.unsent)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    pr_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
-    # Internal metadata only — must never appear in body_md, PR title/description,
-    # commit messages, or any output the employer sees. The generation prompt
-    # explicitly forbids the model from naming itself or its provider.
+    # Internal metadata only — must never appear in body_md or any output
+    # the employer sees. The generation prompt explicitly forbids the model
+    # from naming itself or its provider.
     generated_with_model: Mapped[str | None] = mapped_column(String(80), nullable=True)
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 

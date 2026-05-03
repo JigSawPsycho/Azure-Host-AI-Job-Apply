@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 
 from db import User
 from db.session import SessionLocal
+from .auth_common import find_or_create_user
 
 router = APIRouter(prefix="/auth/ms", tags=["auth"])
 
@@ -192,10 +193,11 @@ def callback(
 
     session: Session = SessionLocal()
     try:
-        user = session.query(User).filter_by(email=email).one_or_none()
-        if user is None:
-            user = User(email=email)
-            session.add(user)
+        user, redirect = find_or_create_user(
+            session, provider="email", email=email, entra_oid=claims.get("oid")
+        )
+        if redirect is not None:
+            return redirect
         session.commit()
         request.session["user_id"] = user.id
     finally:

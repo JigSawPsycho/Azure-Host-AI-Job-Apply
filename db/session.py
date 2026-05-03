@@ -73,11 +73,17 @@ def _ensure_user_columns() -> None:
         "billing_mode": "VARCHAR(16) NOT NULL DEFAULT 'tokens'",
         "token_balance_centitokens": "INTEGER NOT NULL DEFAULT 0",
         "stripe_customer_id": "VARCHAR(120)",
+        "entra_oid": "VARCHAR(80)",
     }
     with engine.begin() as conn:
         for name, ddl in additions.items():
             if name not in existing:
                 conn.execute(text(f'ALTER TABLE "user" ADD COLUMN {name} {ddl}'))
+        if "entra_oid" not in existing:
+            try:
+                conn.execute(text('CREATE UNIQUE INDEX IF NOT EXISTS ix_user_entra_oid ON "user"(entra_oid)'))
+            except Exception:
+                pass
 
 
 def get_session() -> Iterator[Session]:

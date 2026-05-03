@@ -3,34 +3,48 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ai-apply · sign up</title>
-  <link rel="stylesheet" href="/static/apply.css" />
-  <link rel="stylesheet" href="/static/shell.css" />
+  <title>ai-apply — sign up</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+KR:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
-  <main class="auth-shell">
-    <a class="auth-brand" href="/">ai-apply</a>
-
-    <section class="auth-card">
-      <h1>Create your account</h1>
-
-      <div class="auth-providers">
-        <a class="btn btn-primary auth-provider" href="/auth/ms/signup">
-          <span class="provider-glyph">@</span> Sign up with email
-        </a>
-        <a class="btn btn-outline auth-provider" href="/auth/google/login">
-          <span class="provider-glyph">G</span> Continue with Google
-        </a>
-        <a class="btn btn-outline auth-provider" href="/auth/github/login">
-          <span class="provider-glyph">GH</span> Continue with GitHub
-        </a>
+  <div class="bg-grid"></div>
+  <main class="login-shell">
+    <div class="login-card" style="position: relative; z-index: 1;">
+      <div class="login-brand">
+        <span class="brand-mark">A</span>
+        <span style="font-weight: 600; font-size: 16px;">ai-apply</span>
       </div>
 
-      <p class="auth-footer">
-        Already have an account? <a href="/login.html">Sign in</a>
-      </p>
-    </section>
+      <div style="margin-bottom: 22px;">
+        <div class="h2" style="margin-bottom: 4px;">Create your account</div>
+        <div class="muted" style="font-size: 13px;">Get started in under a minute.</div>
+      </div>
+
+      <div class="tabs">
+        <a class="tab" href="/login.html">Sign in</a>
+        <a class="tab active" href="/signup.html">Sign up</a>
+      </div>
+
+      <div class="stack" style="gap: 8px;">
+        <a class="btn block lg" href="/auth/google/login" id="g-btn"></a>
+        <a class="btn block lg" href="/auth/github/login" id="gh-btn"></a>
+        <a class="btn primary block lg" href="/auth/ms/signup" id="ms-btn"></a>
+      </div>
+
+      <div class="muted" style="font-size: 12; text-align: center; margin-top: 18px;">
+        Already have an account? <a href="/login.html" style="color: var(--accent-text);">Sign in</a>
+      </div>
+    </div>
   </main>
 
+  <script src="/static/icons.js"></script>
+  <script>
+    document.getElementById("g-btn").innerHTML = window.I.google(14) + " Continue with Google";
+    document.getElementById("gh-btn").innerHTML = window.I.github(14) + " Continue with GitHub";
+    document.getElementById("ms-btn").innerHTML = window.I.mail(14) + " Sign up with email";
+  </script>
 </body>
 </html>

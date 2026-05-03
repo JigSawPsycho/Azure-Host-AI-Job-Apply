@@ -1,4 +1,4 @@
-"""Fetch CV files from a user's GitHub repo and (optionally) deliver PRs."""
+"""Fetch CV files from a user's GitHub repo."""
 from __future__ import annotations
 
 import base64

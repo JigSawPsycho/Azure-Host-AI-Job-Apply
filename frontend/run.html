@@ -3,46 +3,85 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ai-apply · run</title>
-  <link rel="stylesheet" href="/static/apply.css" />
-  <link rel="stylesheet" href="/static/shell.css" />
+  <title>ai-apply — run</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+KR:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
-  <header class="shell-topbar">
-    <a class="shell-brand" href="/">ai-apply</a>
-    <nav class="shell-nav">
-      <a href="/">Applications</a>
-      <a href="/run.html">Run</a>
-      <a href="/settings.html">Settings</a>
-    </nav>
-    <div class="shell-user" id="shell-user"></div>
-  </header>
-
-  <main class="app">
-    <h1>Run</h1>
-    <section class="run-panel">
-      <p>One click: scrape every enabled search criterion, generate cover letters for new jobs, and queue them on the Applications page.</p>
-      <div id="run-estimate" class="run-estimate" hidden>
-        <div class="run-estimate-row">
-          <span class="muted">Estimated cost</span>
-          <span class="est-value">~<strong id="est-amount">0</strong><span class="muted">tokens</span></span>
+  <div class="bg-grid"></div>
+  <div class="app">
+    <nav class="topnav">
+      <div class="topnav-inner">
+        <div class="brand"><span class="brand-mark">A</span><span>ai-apply</span></div>
+        <div class="nav-links">
+          <a class="nav-link" data-nav="run" href="/run.html">Run</a>
+          <a class="nav-link" data-nav="applications" href="/index.html">Applications</a>
         </div>
-        <div class="est-meta" id="est-meta"></div>
+        <div class="nav-spacer"></div>
+        <div class="user-panel" id="shell-user"></div>
       </div>
-      <div id="run-controls">
-        <button id="start" class="btn btn-primary">Start run</button>
-      </div>
-      <p class="status" id="status" aria-live="polite"></p>
-      <div class="run-status" id="run-status"></div>
-    </section>
+    </nav>
 
-    <section class="run-panel">
-      <h2>Recent runs</h2>
-      <div id="recent"></div>
-    </section>
-  </main>
+    <main class="page page-narrow">
+      <div class="page-header">
+        <div>
+          <div class="h1">Run</div>
+          <div class="sub">Fetch new listings from your search criteria, then generate cover letters.</div>
+        </div>
+      </div>
+
+      <div id="error-banner-slot"></div>
+
+      <div class="run-hero">
+        <div style="position: relative; z-index: 1;">
+          <div class="eyebrow" style="margin-bottom: 8px;">Pipeline</div>
+          <div id="run-headline" style="font-size: 22px; font-weight: 600; letter-spacing: -0.015em;">Ready when you are</div>
+          <div id="run-sub" class="muted" style="font-size: 13px; margin-top: 6px; max-width: 520px;">
+            Click run to scrape every enabled criterion and generate cover letters.
+          </div>
+        </div>
+
+        <button id="start" class="run-button" style="position: relative; z-index: 1;"></button>
+
+        <div id="run-estimate" class="run-estimate" hidden style="position: relative; z-index: 1; margin-top: 12px;">
+          <div class="run-estimate-row">
+            <span class="muted" style="font-size: 12.5px;">Estimated cost</span>
+            <span class="est-value">
+              <span id="est-icon"></span>
+              <strong>~<span id="est-amount">0</span></strong>
+              <span class="muted" style="font-weight: 400;">tokens</span>
+            </span>
+          </div>
+          <div class="muted" id="est-meta" style="font-size: 11.5px;"></div>
+        </div>
+
+        <div id="run-progress" hidden style="position: relative; z-index: 1; margin-top: 18px;">
+          <div class="stages" id="run-stages"></div>
+          <div class="run-counters" id="run-counters" style="display:flex;gap:18px;margin-top:12px;font-size:13px;"></div>
+        </div>
+
+        <div class="run-stats" style="position: relative; z-index: 1;">
+          <div class="stat"><strong id="stat-criteria">–</strong> criteria active</div>
+          <div class="stat"><strong id="stat-fetch">–</strong> max fetched</div>
+          <div class="stat"><strong id="stat-gen">–</strong> max generated</div>
+        </div>
+      </div>
+
+      <div id="run-complete-cta" hidden style="margin-top: 28px;">
+        <a id="run-complete-btn" class="btn primary lg" href="/index.html"></a>
+      </div>
+    </main>
+  </div>
+
+  <style>
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .spin { animation: spin 1s linear infinite; }
+  </style>
 
   <script src="/static/toast.js" defer></script>
+  <script src="/static/icons.js" defer></script>
   <script src="/static/shell.js" defer></script>
   <script src="/static/run.js" defer></script>
 </body>

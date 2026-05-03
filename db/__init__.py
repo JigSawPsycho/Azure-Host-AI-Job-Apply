@@ -16,6 +16,7 @@ from .models import (
     TokenLedgerReason,
     TokenPurchase,
     TokenPurchaseStatus,
+    UploadedCV,
     User,
 )
 
@@ -38,4 +39,5 @@ __all__ = [
     "TokenLedgerReason",
     "TokenPurchase",
     "TokenPurchaseStatus",
+    "UploadedCV",
 ]

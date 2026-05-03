@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from db import User
 from db.session import SessionLocal
+from .auth_common import find_or_create_user
 
 router = APIRouter(prefix="/auth/google", tags=["auth"])
 
@@ -88,22 +89,16 @@ def callback(request: Request, code: str, state: str) -> RedirectResponse:
 
     google_id = str(info["sub"])
     email = info.get("email")
+    if not email:
+        raise HTTPException(400, "Google did not return an email address")
 
     session: Session = SessionLocal()
     try:
-        user = session.query(User).filter_by(google_id=google_id).one_or_none()
-        if user is None and email:
-            # Fall through to email match — lets a user who originally signed
-            # up via GitHub use Google for the same account on second visit.
-            user = session.query(User).filter_by(email=email).one_or_none()
-        if user is None:
-            user = User(google_id=google_id, email=email)
-            session.add(user)
-        else:
-            if not user.google_id:
-                user.google_id = google_id
-            if email and not user.email:
-                user.email = email
+        user, redirect = find_or_create_user(
+            session, provider="google", email=email, google_id=google_id
+        )
+        if redirect is not None:
+            return redirect
         session.commit()
         request.session["user_id"] = user.id
     finally:

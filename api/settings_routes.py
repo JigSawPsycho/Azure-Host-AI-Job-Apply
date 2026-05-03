@@ -22,6 +22,8 @@ class ModelOptionOut(BaseModel):
 
 class SettingsOut(BaseModel):
     display_name: str
+    email: str | None
+    auth_provider: str
     github_login: str | None
     github_connected: bool
     has_anthropic_key: bool
@@ -29,7 +31,6 @@ class SettingsOut(BaseModel):
     available_models: list[ModelOptionOut]
     repo_full_name: str
     cv_dir: str
-    deliver_as_pr: bool
     max_jobs_per_run: int
     max_drafts_per_run: int
 
@@ -39,7 +40,6 @@ class SettingsUpdate(BaseModel):
     generation_model: str | None = None
     repo_full_name: str | None = None
     cv_dir: str | None = None
-    deliver_as_pr: bool | None = None
     max_jobs_per_run: int | None = Field(default=None, ge=1, le=200)
     max_drafts_per_run: int | None = Field(default=None, ge=1, le=200)
 
@@ -64,8 +64,11 @@ class CriteriaOut(CriteriaIn):
 def read_settings(user: User = Depends(current_user)) -> SettingsOut:
     display_name = user.github_login or user.email or f"user-{user.id}"
     github_connected = bool(user.repo_link and user.repo_link.github_token_ref)
+    from .auth_common import _infer_provider
     return SettingsOut(
         display_name=display_name,
+        email=user.email,
+        auth_provider=_infer_provider(user),
         github_login=user.github_login,
         github_connected=github_connected,
         has_anthropic_key=bool(user.anthropic_key_ref),
@@ -73,7 +76,6 @@ def read_settings(user: User = Depends(current_user)) -> SettingsOut:
         available_models=[ModelOptionOut(**opt.__dict__) for opt in MODEL_OPTIONS],
         repo_full_name=user.repo_link.repo_full_name if user.repo_link else "",
         cv_dir=user.repo_link.cv_dir if user.repo_link else "cv",
-        deliver_as_pr=user.repo_link.deliver_as_pr if user.repo_link else False,
         max_jobs_per_run=user.max_jobs_per_run,
         max_drafts_per_run=user.max_drafts_per_run,
     )
@@ -105,9 +107,7 @@ def update_settings(
             raise HTTPException(400, f"unknown model: {payload.generation_model}")
         user.generation_model = payload.generation_model
 
-    repo_fields_set = any(
-        v is not None for v in (payload.repo_full_name, payload.cv_dir, payload.deliver_as_pr)
-    )
+    repo_fields_set = any(v is not None for v in (payload.repo_full_name, payload.cv_dir))
     if repo_fields_set and user.repo_link is None:
         # User signed in via Google/email and is trying to save a repo
         # name before connecting GitHub. Stash the values so they aren't
@@ -123,8 +123,6 @@ def update_settings(
             user.repo_link.repo_full_name = payload.repo_full_name
         if payload.cv_dir is not None:
             user.repo_link.cv_dir = payload.cv_dir
-        if payload.deliver_as_pr is not None:
-            user.repo_link.deliver_as_pr = payload.deliver_as_pr
 
     session.commit()
     return read_settings(user)

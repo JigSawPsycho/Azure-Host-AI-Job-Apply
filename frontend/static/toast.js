@@ -52,14 +52,24 @@
     const params = new URLSearchParams(window.location.search);
     const billing = params.get("billing");
     if (!billing) return;
-    const fire = () => {
+    const sessionId = params.get("session_id");
+    const fire = async () => {
       if (billing === "success") {
+        if (sessionId) {
+          try {
+            await fetch(
+              `/api/billing/checkout/verify?session_id=${encodeURIComponent(sessionId)}`,
+              { method: "POST" }
+            );
+          } catch {}
+        }
         window.toast({
           variant: "success",
           title: "Payment successful",
-          message: "Your tokens are on the way — they'll appear in your balance shortly.",
+          message: "Your tokens have been credited to your balance.",
           duration: 6000,
         });
+        document.dispatchEvent(new CustomEvent("billing:credited"));
       } else if (billing === "cancelled" || billing === "canceled") {
         window.toast({
           variant: "info",

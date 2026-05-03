@@ -3,186 +3,279 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ai-apply · settings</title>
-  <link rel="stylesheet" href="/static/apply.css" />
-  <link rel="stylesheet" href="/static/shell.css" />
+  <title>ai-apply — settings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+KR:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
-  <header class="shell-topbar">
-    <a class="shell-brand" href="/">ai-apply</a>
-    <nav class="shell-nav">
-      <a href="/">Applications</a>
-      <a href="/run.html">Run</a>
-      <a href="/settings.html">Settings</a>
+  <div class="bg-grid"></div>
+  <div class="app">
+    <nav class="topnav">
+      <div class="topnav-inner">
+        <div class="brand"><span class="brand-mark">A</span><span>ai-apply</span></div>
+        <div class="nav-links">
+          <a class="nav-link" data-nav="run" href="/run.html">Run</a>
+          <a class="nav-link" data-nav="applications" href="/index.html">Applications</a>
+        </div>
+        <div class="nav-spacer"></div>
+        <div class="user-panel" id="shell-user"></div>
+      </div>
     </nav>
-    <div class="shell-user" id="shell-user"></div>
-  </header>
 
-  <main class="app">
-    <h1>Settings</h1>
-
-    <section class="settings-form" id="billing">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:8px;">
+    <main class="page">
+      <div class="page-header">
         <div>
-          <h2 style="margin:0;">Billing &amp; tokens</h2>
-          <p class="model-blurb" style="margin:4px 0 0;">Pay per cover letter with tokens, or use your own Anthropic key for direct billing.</p>
+          <div class="h1">Settings</div>
+          <div class="sub">Configure how ai-apply fetches listings and generates cover letters.</div>
         </div>
+        <button id="save" class="btn primary"></button>
       </div>
 
-      <div class="balance-card">
+      <div class="settings-grid">
+        <div class="settings-nav" id="settings-nav">
+          <button data-section="billing" class="active">Billing &amp; tokens</button>
+          <button data-section="anthropic">Anthropic API</button>
+          <button data-section="github">GitHub integration</button>
+          <button data-section="uploads">Direct CV upload</button>
+          <button data-section="limits">Run limits</button>
+          <button data-section="history">Job history</button>
+          <button data-section="criteria">Search criteria</button>
+        </div>
+
         <div>
-          <div class="eyebrow">Current balance</div>
-          <div class="balance-num">
-            <span class="num" id="balance-num">0</span>
-            <span class="unit">tokens</span>
+          <div id="sec-billing" class="card settings-section">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Billing &amp; tokens</div>
+                <div class="card-sub">Pay per cover letter with tokens, or use your own Anthropic key for direct billing.</div>
+              </div>
+            </div>
+
+            <div style="padding: 20px 22px; border-bottom: 1px solid var(--border);">
+              <div class="balance-card">
+                <div>
+                  <div class="eyebrow" style="margin-bottom: 6px;">Current balance</div>
+                  <div class="balance-num">
+                    <span class="num" id="balance-num">0</span>
+                    <span class="unit">tokens</span>
+                  </div>
+                  <div class="muted" id="balance-helper" style="font-size: 12.5px; margin-top: 6px;">
+                    Enough for ~0 Sonnet, ~0 Haiku, or ~0 Opus letters.
+                  </div>
+                </div>
+                <button id="balance-buy" class="btn primary" type="button" style="align-self: flex-start;">+ Buy tokens</button>
+              </div>
+            </div>
+
+            <div class="settings-row">
+              <div>
+                <div class="label">Billing mode</div>
+                <div class="desc">Switch any time. The mode you pick determines whether runs spend tokens or hit your own Anthropic key.</div>
+              </div>
+              <div class="control">
+                <div class="billing-mode-group" id="billing-modes">
+                  <label class="billing-mode" data-mode="tokens">
+                    <input type="radio" name="billing-mode" value="tokens" />
+                    <div>
+                      <div class="bm-title">Pay with tokens</div>
+                      <div class="bm-desc">Buy a pack, spend per letter. No setup.</div>
+                    </div>
+                  </label>
+                  <label class="billing-mode" data-mode="byok">
+                    <input type="radio" name="billing-mode" value="byok" />
+                    <div>
+                      <div class="bm-title">Use my own Anthropic API key</div>
+                      <div class="bm-desc">Direct billing through Anthropic. No tokens consumed.</div>
+                    </div>
+                  </label>
+                </div>
+                <p class="status" id="mode-status" aria-live="polite" style="margin-top: 8px;"></p>
+              </div>
+            </div>
+
+            <div style="padding: 20px 22px;">
+              <div class="flex between center mb-16">
+                <div>
+                  <div class="label">Token packages</div>
+                  <div class="desc">1 token = 1 Sonnet letter · 4 Haiku letters · 0.2 Opus letters</div>
+                </div>
+                <span class="badge" id="pkg-disabled-note" hidden>Disabled while using your own key</span>
+              </div>
+              <div class="pkg-grid" id="pkg-grid"></div>
+            </div>
+
+            <div style="padding: 0 22px 22px;">
+              <div class="flex between center mb-16" style="padding-top: 6px;">
+                <div>
+                  <div class="label">Token activity</div>
+                  <div class="desc">Every debit and credit, newest first.</div>
+                </div>
+              </div>
+              <div id="activity-container"></div>
+            </div>
           </div>
-          <div class="balance-helper" id="balance-helper">
-            Enough for ~0 Sonnet, ~0 Haiku, or ~0 Opus letters.
+
+          <div id="sec-anthropic" class="card settings-section">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Anthropic API</div>
+                <div class="card-sub">Used to generate cover letters and tailored CVs.</div>
+              </div>
+              <span id="anthropic-inactive-badge" class="badge" hidden>Inactive · using tokens</span>
+            </div>
+            <div class="settings-row">
+              <div>
+                <div class="label">API key</div>
+                <div class="desc">Stored encrypted at rest. Never shared with third parties.</div>
+              </div>
+              <div class="control" style="position: relative;">
+                <input id="anthropic-key" class="input mono" type="password" placeholder="sk-ant-…" autocomplete="off" style="padding-right: 36px;" />
+                <button id="toggle-key" type="button" style="position: absolute; right: 8px; top: 8px; background: none; border: none; color: var(--text-muted); cursor: pointer;"></button>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div>
+                <div class="label">Model</div>
+                <div class="desc" id="model-blurb">Sonnet recommended for quality. Haiku for speed/cost.</div>
+              </div>
+              <div class="control">
+                <select id="model" class="select"></select>
+              </div>
+            </div>
+          </div>
+
+          <div id="sec-github" class="card settings-section">
+            <div class="card-header">
+              <div>
+                <div class="card-title">GitHub integration</div>
+                <div class="card-sub">Pull CVs and templates from a repository.</div>
+              </div>
+              <span id="gh-badge" class="badge success" hidden><span class="dot"></span> Connected</span>
+            </div>
+            <div class="settings-row">
+              <div>
+                <div class="label">Connection</div>
+                <div class="desc" id="gh-status">Not connected.</div>
+              </div>
+              <div class="control" id="gh-actions"></div>
+            </div>
+            <div class="settings-row">
+              <div>
+                <div class="label">Repository</div>
+                <div class="desc">owner/name — where your CV templates live.</div>
+              </div>
+              <div class="control">
+                <input id="repo-name" class="input mono" type="text" placeholder="octocat/cv" />
+              </div>
+            </div>
+            <div class="settings-row">
+              <div>
+                <div class="label">CV directory</div>
+                <div class="desc">Subdirectory containing your CV files (PDF/DOCX/MD).</div>
+              </div>
+              <div class="control">
+                <input id="cv-dir" class="input mono" type="text" placeholder="cv" />
+              </div>
+            </div>
+          </div>
+
+          <div id="sec-uploads" class="card settings-section">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Direct CV upload</div>
+                <div class="card-sub">Upload CV templates and CLAUDE.md files directly. Used in preference to GitHub when present.</div>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div>
+                <div class="label">Upload file</div>
+                <div class="desc">PDF, DOCX, MD, or TXT. Max 250 KB per file, 5 MB total across all files. Re-uploading the same filename replaces the existing file.</div>
+              </div>
+              <div class="control">
+                <input id="cv-file" type="file" accept=".pdf,.docx,.md,.markdown,.txt" hidden />
+                <button id="cv-upload-btn" type="button" class="btn primary"></button>
+              </div>
+            </div>
+            <div style="padding: 0 18px 18px;" id="uploaded-cv-list"></div>
+          </div>
+
+          <div id="sec-limits" class="card settings-section">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Run limits</div>
+                <div class="card-sub">Cap throughput per pipeline run to control cost.</div>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div>
+                <div class="label">Max jobs fetched per run</div>
+                <div class="desc">Across all active search criteria combined.</div>
+              </div>
+              <div class="control">
+                <input id="max-jobs" class="input" type="number" min="1" max="200" />
+              </div>
+            </div>
+            <div class="settings-row">
+              <div>
+                <div class="label">Max cover letters generated per run</div>
+                <div class="desc">Each draft = one Anthropic API call.</div>
+              </div>
+              <div class="control">
+                <input id="max-drafts" class="input" type="number" min="1" max="200" />
+              </div>
+            </div>
+          </div>
+
+          <div id="sec-history" class="card settings-section">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Job history</div>
+                <div class="card-sub">Manage what gets remembered between runs.</div>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div>
+                <div class="label">Clear rejected applications</div>
+                <div class="desc">Removes listings you've skipped so they can be re-considered on a future run.</div>
+              </div>
+              <div class="control">
+                <button id="clear-rejected" class="btn danger"></button>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div>
+                <div class="label">Clear seen jobs</div>
+                <div class="desc">Resets the dedupe cache. Listings already shown to you may be re-fetched.</div>
+              </div>
+              <div class="control">
+                <button id="clear-seen" class="btn danger"></button>
+              </div>
+            </div>
+          </div>
+
+          <div id="sec-criteria" class="card settings-section">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Search criteria</div>
+                <div class="card-sub" id="criteria-sub">– active. Each runs independently per pipeline.</div>
+              </div>
+              <button id="add-criteria-btn" class="btn primary sm"></button>
+            </div>
+            <div style="padding: 18px;" id="criteria-list"></div>
           </div>
         </div>
-        <button id="balance-buy" class="btn btn-primary" type="button">+ Buy tokens</button>
       </div>
 
-      <div class="section-flexhead">
-        <div>
-          <h3>Billing mode</h3>
-          <div class="desc">Switch any time. Determines whether runs spend tokens or hit your own Anthropic key.</div>
-        </div>
-      </div>
-      <div class="billing-modes" id="billing-modes">
-        <label class="billing-mode-opt" data-mode="tokens">
-          <input type="radio" name="billing-mode" value="tokens" />
-          <div>
-            <div class="bm-title">Pay with tokens</div>
-            <div class="bm-desc">Buy a pack, spend per letter. No setup.</div>
-          </div>
-        </label>
-        <label class="billing-mode-opt" data-mode="byok">
-          <input type="radio" name="billing-mode" value="byok" />
-          <div>
-            <div class="bm-title">Use my own Anthropic API key</div>
-            <div class="bm-desc">Direct billing through Anthropic. No tokens consumed.</div>
-          </div>
-        </label>
-      </div>
-      <p class="status" id="mode-status" aria-live="polite"></p>
+      <div id="status" class="muted" style="text-align: right; margin-top: 16px; font-size: 13px;"></div>
+    </main>
+  </div>
 
-      <div class="section-flexhead">
-        <div>
-          <h3>Token packages</h3>
-          <div class="desc">1 token = 1 Sonnet letter · 4 Haiku letters · 0.2 Opus letters</div>
-        </div>
-        <span class="badge-soft" id="pkg-disabled-note" hidden>Disabled while using your own key</span>
-      </div>
-      <div class="pkg-grid" id="pkg-grid"></div>
-
-      <div class="section-flexhead">
-        <div>
-          <h3>Token activity</h3>
-          <div class="desc">Every debit and credit, newest first.</div>
-        </div>
-      </div>
-      <div id="activity-container"></div>
-    </section>
-
-    <section class="settings-form" id="account">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
-        <h2 style="margin:0;">Anthropic</h2>
-        <span class="badge-soft" id="anthropic-inactive-badge" hidden>Inactive · using tokens</span>
-      </div>
-      <div class="field">
-        <label for="anthropic-key">API key</label>
-        <input id="anthropic-key" type="password" placeholder="sk-ant-…" autocomplete="off" />
-        <p class="model-blurb" id="anthropic-key-hint">Switch billing mode to "Use my own Anthropic API key" to enable.</p>
-      </div>
-      <div class="field">
-        <label for="model">Generation model</label>
-        <select id="model"></select>
-        <p class="model-blurb" id="model-blurb"></p>
-      </div>
-    </section>
-
-    <section class="settings-form" id="github-connect">
-      <h2>GitHub connection</h2>
-      <p class="model-blurb" id="github-status">Checking…</p>
-      <p class="model-blurb">
-        ai-apply needs read access to your GitHub repo to fetch CV files,
-        and (optionally) write access to open PRs back to it.
-      </p>
-      <a id="github-connect-btn" class="btn btn-outline" href="/auth/github/login">Connect GitHub</a>
-      <a id="github-connect-pr-btn" class="btn btn-outline" href="/auth/github/login?deliver_as_pr=true" style="margin-left:8px;">Re-authorize for PR delivery</a>
-    </section>
-
-    <section class="settings-form" id="repo">
-      <h2>GitHub repo + CV directory</h2>
-      <div class="field">
-        <label for="repo-name">Repo (owner/name)</label>
-        <input id="repo-name" type="text" placeholder="octocat/cv" />
-      </div>
-      <div class="field">
-        <label for="cv-dir">CV directory</label>
-        <input id="cv-dir" type="text" placeholder="cv" />
-      </div>
-      <div class="field">
-        <label><input id="deliver-as-pr" type="checkbox" /> Deliver outputs as a PR back to the repo</label>
-      </div>
-    </section>
-
-    <section class="settings-form" id="run-limits">
-      <h2>Run limits</h2>
-      <div class="field">
-        <label for="max-jobs">Max jobs fetched per run</label>
-        <input id="max-jobs" type="number" min="1" max="200" />
-      </div>
-      <div class="field">
-        <label for="max-drafts">Max cover-letter drafts per run</label>
-        <input id="max-drafts" type="number" min="1" max="200" />
-        <p class="model-blurb">Each draft = one Anthropic API call.</p>
-      </div>
-    </section>
-
-    <button id="save" class="btn btn-primary">Save</button>
-    <p class="status" id="status" aria-live="polite"></p>
-
-    <section class="settings-form" id="job-history">
-      <h2>Job history</h2>
-      <p class="model-blurb">
-        "Seen" jobs are everything the scraper has saved for you (used to
-        dedupe future runs). "Rejected" are applications you've skipped.
-      </p>
-      <button id="clear-seen" class="btn btn-outline">Clear seen jobs</button>
-      <button id="clear-rejected" class="btn btn-outline" style="margin-left:8px;">Clear rejected applications</button>
-    </section>
-
-    <section class="settings-form" id="criteria-section">
-      <h2>Search criteria</h2>
-      <div id="criteria-list"></div>
-      <h3 style="margin-top:24px;">Add new</h3>
-      <div class="field">
-        <label for="new-name">Name</label>
-        <input id="new-name" type="text" placeholder="Senior Python — Sydney" />
-      </div>
-      <div class="field">
-        <label for="new-site">Site</label>
-        <select id="new-site">
-          <option value="au">Seek (AU)</option>
-          <option value="nz">Seek (NZ)</option>
-          <option value="wanted">Wanted (KO)</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="new-keywords">Keywords</label>
-        <input id="new-keywords" type="text" placeholder="python senior backend" />
-      </div>
-      <div class="field">
-        <label for="new-location">Location</label>
-        <input id="new-location" type="text" value="All Australia" />
-      </div>
-      <button id="add-criteria" class="btn btn-outline">Add</button>
-    </section>
-  </main>
+  <div id="dialog-mount"></div>
 
   <script src="/static/toast.js" defer></script>
+  <script src="/static/icons.js" defer></script>
   <script src="/static/shell.js" defer></script>
   <script src="/static/settings.js" defer></script>
 </body>

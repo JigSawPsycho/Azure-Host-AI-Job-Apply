@@ -14,7 +14,6 @@ _LIVE = (
     RunStatus.scraping,
     RunStatus.fetching_cvs,
     RunStatus.generating,
-    RunStatus.delivering,
 )
 
 

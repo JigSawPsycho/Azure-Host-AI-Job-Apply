@@ -27,18 +27,12 @@ def test_login_redirects_to_github():
     assert "repo" in scope
 
 
-def test_login_with_pr_delivery_requests_repo_scope():
-    resp = _client().get("/auth/github/login?deliver_as_pr=true", follow_redirects=False)
-    assert resp.status_code == 307
-    assert "repo" in resp.headers["location"]
-
-
 def test_frontend_index_served():
     assert _client().get("/").status_code == 200
 
 
 def test_static_css_served():
-    assert _client().get("/static/apply.css").status_code == 200
+    assert _client().get("/static/styles.css").status_code == 200
 
 
 def test_login_page_served():

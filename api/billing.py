@@ -220,6 +220,40 @@ def start_checkout(
     return CheckoutOut(url=cs["url"], session_id=cs["id"])
 
 
+@router.post("/checkout/verify", response_model=BalanceOut)
+def verify_checkout(
+    session_id: str,
+    user: User = Depends(current_user),
+    session: Session = Depends(get_session),
+) -> BalanceOut:
+    """Fallback when Stripe webhook isn't configured: success page calls this
+    with the session_id from Stripe's redirect; we fetch the session and
+    credit if paid. Idempotent — replays no-op via _credit_for_session.
+    """
+    stripe = _stripe()
+    if stripe is None:
+        raise HTTPException(501, "Stripe is not configured")
+    purchase = (
+        session.query(TokenPurchase)
+        .filter_by(stripe_session_id=session_id, user_id=user.id)
+        .one_or_none()
+    )
+    if purchase is None:
+        raise HTTPException(404, "purchase not found for this session")
+    try:
+        cs = stripe.checkout.Session.retrieve(session_id)
+    except Exception as exc:
+        log.exception("stripe retrieve failed for %s", session_id)
+        raise HTTPException(502, f"stripe retrieve failed: {exc}")
+    try:
+        _credit_for_session(session, cs)
+    except Exception as exc:
+        log.exception("credit_for_session failed for %s", session_id)
+        raise HTTPException(500, f"credit failed: {exc}")
+    session.refresh(user)
+    return get_balance(user)
+
+
 @router.post("/webhook")
 async def stripe_webhook(
     request: Request, session: Session = Depends(get_session)
@@ -250,9 +284,21 @@ async def stripe_webhook(
     return {"received": True}
 
 
-def _credit_for_session(session: Session, cs: dict) -> None:
-    """Apply a completed Checkout session to the matching TokenPurchase."""
-    session_id = cs.get("id")
+def _credit_for_session(session: Session, cs) -> None:
+    """Apply a completed Checkout session to the matching TokenPurchase.
+
+    `cs` may be a plain dict (webhook event payload) or a stripe.Checkout.Session
+    SDK object (verify endpoint). Both support bracket access; the SDK object's
+    `.get()` method is shadowed by attribute lookup, so prefer `[...]`.
+    """
+    def _field(obj, name, default=None):
+        try:
+            v = obj[name]
+            return default if v is None else v
+        except (KeyError, AttributeError, TypeError):
+            return default
+
+    session_id = _field(cs, "id")
     if not session_id:
         return
     purchase = (
@@ -263,7 +309,7 @@ def _credit_for_session(session: Session, cs: dict) -> None:
         return
     if purchase.status == TokenPurchaseStatus.paid:
         return  # already credited; replay is a no-op
-    if cs.get("payment_status") != "paid":
+    if _field(cs, "payment_status") != "paid":
         return  # only credit on actual payment
 
     user = session.get(User, purchase.user_id)
@@ -273,7 +319,7 @@ def _credit_for_session(session: Session, cs: dict) -> None:
 
     purchase.status = TokenPurchaseStatus.paid
     purchase.paid_at = datetime.now(timezone.utc)
-    purchase.stripe_payment_intent_id = cs.get("payment_intent")
+    purchase.stripe_payment_intent_id = _field(cs, "payment_intent")
     session.flush()  # so credit_tokens can reference purchase.id
 
     credit_tokens(

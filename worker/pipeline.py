@@ -26,6 +26,7 @@ from db import (
     Run,
     RunStatus,
     TokenLedgerReason,
+    UploadedCV,
     User,
 )
 from db.session import SessionLocal
@@ -52,19 +53,30 @@ def _run(session: Session, run_id: int) -> None:
         log.error("run %s not found", run_id)
         return
     user = session.get(User, run.user_id)
-    if user is None or not user.repo_link:
-        _fail(session, run, "user or repo_link missing")
+    if user is None:
+        _fail(session, run, "user missing")
         return
+
+    uploaded = session.query(UploadedCV).filter_by(user_id=user.id).all()
+    use_uploaded = len(uploaded) > 0
 
     store = get_store()
     try:
-        github_token = store.get(user.repo_link.github_token_ref) if user.repo_link.github_token_ref else None
+        github_token = (
+            store.get(user.repo_link.github_token_ref)
+            if (user.repo_link and user.repo_link.github_token_ref)
+            else None
+        )
     except Exception as exc:
         _fail(session, run, f"could not load secrets: {exc}")
         return
-    if not github_token:
-        _fail(session, run, "github token missing")
-        return
+    if not use_uploaded:
+        if not user.repo_link:
+            _fail(session, run, "no uploaded CVs and no GitHub repo linked")
+            return
+        if not github_token:
+            _fail(session, run, "github token missing")
+            return
 
     # Pick the Anthropic key based on the user's billing mode. In tokens
     # mode we charge their balance and use the host's API key; in byok
@@ -114,16 +126,19 @@ def _run(session: Session, run_id: int) -> None:
 
     run.status = RunStatus.fetching_cvs
     session.commit()
-    try:
-        with GitHubClient(github_token, user.repo_link.repo_full_name) as gh:
-            fetched = gh.list_cvs(user.repo_link.cv_dir)
-    except Exception as exc:
-        _fail(session, run, f"could not list CVs: {exc}")
-        return
-    if not fetched:
-        _fail(session, run, f"no CV files found under {user.repo_link.cv_dir}")
-        return
-    cvs = [CVFile(name=f.name, content=f.content, sha=f.sha) for f in fetched]
+    if use_uploaded:
+        cvs = [CVFile(name=u.name, content=u.content, sha=u.sha) for u in uploaded]
+    else:
+        try:
+            with GitHubClient(github_token, user.repo_link.repo_full_name) as gh:
+                fetched = gh.list_cvs(user.repo_link.cv_dir)
+        except Exception as exc:
+            _fail(session, run, f"could not list CVs: {exc}")
+            return
+        if not fetched:
+            _fail(session, run, f"no CV files found under {user.repo_link.cv_dir}")
+            return
+        cvs = [CVFile(name=f.name, content=f.content, sha=f.sha) for f in fetched]
 
     run.status = RunStatus.generating
     session.commit()

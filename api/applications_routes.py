@@ -13,6 +13,12 @@ from .auth import current_user
 router = APIRouter(prefix="/api/applications", tags=["applications"])
 
 
+class ApplicationCounts(BaseModel):
+    unsent: int
+    sent: int
+    skipped: int
+
+
 class ApplicationSummary(BaseModel):
     id: int
     job_id: int
@@ -23,7 +29,6 @@ class ApplicationSummary(BaseModel):
     recommended_cv: str | None
     status: str
     sent_at: datetime | None
-    pr_url: str | None
 
 
 class ApplicationDetail(ApplicationSummary):
@@ -47,8 +52,27 @@ def _summary(app: Application, job: Job) -> ApplicationSummary:
         recommended_cv=app.recommended_cv,
         status=app.status.value,
         sent_at=app.sent_at,
-        pr_url=app.pr_url,
     )
+
+
+@router.get("/counts", response_model=ApplicationCounts)
+def application_counts(
+    user: User = Depends(current_user),
+    session: Session = Depends(get_session),
+) -> ApplicationCounts:
+    from sqlalchemy import func
+
+    rows = (
+        session.query(Application.status, func.count(Application.id))
+        .join(Job, Application.job_id == Job.id)
+        .filter(Job.user_id == user.id)
+        .group_by(Application.status)
+        .all()
+    )
+    counts = {s.value: 0 for s in ApplicationStatus}
+    for status, n in rows:
+        counts[status.value] = n
+    return ApplicationCounts(**counts)
 
 
 @router.get("", response_model=list[ApplicationSummary])

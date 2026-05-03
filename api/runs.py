@@ -7,7 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from db import BillingMode, Run, RunStatus, User, get_session
+from db import BillingMode, Run, RunStatus, UploadedCV, User, get_session
 from worker.pipeline import execute_run
 from .auth import current_user
 from .models_const import COST_BY_MODEL
@@ -55,8 +55,14 @@ def start_run(
             raise HTTPException(
                 402, "out of tokens — top up before starting a run, or switch to bring-your-own-key"
             )
-    if not user.repo_link or not user.repo_link.repo_full_name:
-        raise HTTPException(400, "connect a GitHub repo and pick a CV directory first")
+    has_uploaded = (
+        session.query(UploadedCV.id).filter_by(user_id=user.id).first() is not None
+    )
+    if not has_uploaded and (not user.repo_link or not user.repo_link.repo_full_name):
+        raise HTTPException(
+            400,
+            "upload a CV directly, or connect a GitHub repo and pick a CV directory first",
+        )
     in_progress = (
         session.query(Run.id)
         .filter_by(user_id=user.id)
@@ -67,7 +73,6 @@ def start_run(
                     RunStatus.scraping,
                     RunStatus.fetching_cvs,
                     RunStatus.generating,
-                    RunStatus.delivering,
                 ]
             )
         )
