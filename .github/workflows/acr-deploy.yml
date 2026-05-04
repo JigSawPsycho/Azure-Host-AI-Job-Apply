@@ -1,0 +1,34 @@
+name: ACR Build & Restart
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  ACR: ${{ vars.ACR_NAME }}
+  IMG: ${{ vars.IMAGE_NAME }}
+  APP: ${{ vars.AZURE_WEBAPP_NAME }}
+  RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: ACR build
+        run: az acr build -n "$ACR" -t "$IMG:${{ github.sha }}" -t "$IMG:latest" .
+
+      - name: Restart webapp
+        run: az webapp restart -n "$APP" -g "$RG"

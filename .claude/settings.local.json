@@ -11,7 +11,11 @@
       "Bash(mkdir -p design)",
       "Bash(tar -xzf design.gz -C design)",
       "Bash(cygpath *)",
-      "Bash(.venv/Scripts/python.exe *)"
+      "Bash(.venv/Scripts/python.exe *)",
+      "Bash(gh api *)",
+      "Bash(ssh -T git@github.com)",
+      "Read(//c/Users/miche/.ssh/**)",
+      "Bash(gh auth *)"
     ]
   }
 }
