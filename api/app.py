@@ -11,6 +11,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from db import init_db
 from .startup import recover_orphaned_runs
+from .env import ensure_local_secrets, is_local
 from . import (
     applications_routes,
     auth,
@@ -26,6 +27,7 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 
 def create_app() -> FastAPI:
+    ensure_local_secrets()
     app = FastAPI(title="ai-apply", version="0.1.0")
     secret = os.environ.get("SESSION_SECRET")
     if not secret:
@@ -46,6 +48,10 @@ def create_app() -> FastAPI:
     @app.get("/healthz")
     def healthz() -> dict:
         return {"ok": True}
+
+    @app.get("/api/config")
+    def get_config() -> dict:
+        return {"local": is_local()}
 
     app.include_router(auth.router)
     app.include_router(google_auth.router)

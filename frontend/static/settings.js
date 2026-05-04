@@ -2,6 +2,17 @@
 (() => {
   "use strict";
 
+  const KEYWORDS_PLACEHOLDER = {
+    au: 'e.g. senior python developer  or  &quot;data engineer&quot; remote',
+    nz: 'e.g. senior python developer  or  &quot;data engineer&quot; remote',
+    wanted: "e.g. python backend api",
+  };
+  const KEYWORDS_HINT = {
+    au: 'Seek search syntax. Space = AND. Use &quot;quotes&quot; for phrases, <code>or</code> between alternatives, <code>-word</code> to exclude.',
+    nz: 'Seek search syntax. Space = AND. Use &quot;quotes&quot; for phrases, <code>or</code> between alternatives, <code>-word</code> to exclude.',
+    wanted: "Space-separated single terms. Each word runs a separate search; results merged (OR).",
+  };
+
   const els = {
     save: document.getElementById("save"),
     anthropic: document.getElementById("anthropic-key"),
@@ -35,7 +46,12 @@
     cvFile: document.getElementById("cv-file"),
     cvUploadBtn: document.getElementById("cv-upload-btn"),
     uploadedCvList: document.getElementById("uploaded-cv-list"),
+    localModeRow: document.getElementById("local-mode-row"),
+    localModes: document.getElementById("local-modes"),
+    localModeStatus: document.getElementById("local-mode-status"),
   };
+
+  let isLocal = false;
 
   let modelBlurbs = {};
   let modelCosts = {};
@@ -471,7 +487,11 @@
                 <option value="wanted"${c.site === "wanted" ? " selected" : ""}>Wanted (KO)</option>
               </select>
             </div>
-            <div class="field"><label>Keywords</label><input id="f-keywords" class="input" value="${escapeHtml(c.keywords)}" placeholder="comma, separated, terms" /></div>
+            <div class="field">
+              <label>Keywords</label>
+              <input id="f-keywords" class="input" value="${escapeHtml(c.keywords)}" placeholder="${KEYWORDS_PLACEHOLDER[c.site] || KEYWORDS_PLACEHOLDER.au}" />
+              <div id="f-keywords-hint" class="hint" style="margin-top: 6px; font-size: 12px; opacity: 0.75;">${KEYWORDS_HINT[c.site] || KEYWORDS_HINT.au}</div>
+            </div>
             <div class="field"><label>Location</label><input id="f-location" class="input" value="${escapeHtml(c.location)}" placeholder="City, Region, or Remote" /></div>
           </div>
           <div class="dialog-actions" style="margin-top: 18px;">
@@ -485,6 +505,13 @@
       if (e.target.id === "db") close();
     });
     document.getElementById("cancel").addEventListener("click", close);
+    document.getElementById("f-site").addEventListener("change", (e) => {
+      const site = e.target.value;
+      const kw = document.getElementById("f-keywords");
+      const hint = document.getElementById("f-keywords-hint");
+      kw.placeholder = KEYWORDS_PLACEHOLDER[site] || KEYWORDS_PLACEHOLDER.au;
+      hint.innerHTML = KEYWORDS_HINT[site] || KEYWORDS_HINT.au;
+    });
     document.getElementById("ok").addEventListener("click", async () => {
       const payload = {
         name: document.getElementById("f-name").value.trim(),
@@ -775,13 +802,90 @@
     await loadBilling();
   });
 
+  async function loadConfig() {
+    try {
+      const r = await fetch("/api/config");
+      if (!r.ok) return;
+      const cfg = await r.json();
+      isLocal = !!cfg.local;
+    } catch {}
+    if (isLocal) {
+      document.querySelectorAll("[data-host-only]").forEach((el) => {
+        el.hidden = true;
+        el.style.display = "none";
+      });
+      const firstNav = document.querySelector("#settings-nav button:not([data-host-only])");
+      if (firstNav) firstNav.classList.add("active");
+      if (els.localModeRow) els.localModeRow.hidden = false;
+      wireLocalModes();
+    }
+  }
+
+  function applyLocalMode(mode) {
+    billingState.billing_mode = mode;
+    els.localModes.querySelectorAll('input[name="local-mode"]').forEach((r) => {
+      r.checked = r.value === mode;
+      r.closest(".billing-mode").classList.toggle("active", r.value === mode);
+    });
+    // Always allow editing the key regardless of mode — user needs to be able
+    // to paste/save it before switching to BYOK.
+    els.anthropic.disabled = false;
+    const isByok = mode === "byok";
+    if (els.anthropicBadge) {
+      els.anthropicBadge.hidden = isByok;
+      els.anthropicBadge.textContent = isByok ? "" : "Inactive · using system Claude";
+    }
+  }
+
+  function wireLocalModes() {
+    els.localModes.addEventListener("change", async (e) => {
+      const t = e.target;
+      if (!(t instanceof HTMLInputElement) || t.name !== "local-mode") return;
+      const mode = t.value;
+      els.localModeStatus.textContent = "Updating…";
+      els.localModeStatus.className = "status";
+      const res = await fetch("/api/billing/mode", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ billing_mode: mode }),
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        els.localModeStatus.textContent = body || `Update failed: ${res.status}`;
+        els.localModeStatus.className = "status err";
+        applyLocalMode(billingState.billing_mode);
+        return;
+      }
+      const updated = await res.json();
+      billingState = updated;
+      applyLocalMode(updated.billing_mode);
+      els.localModeStatus.textContent = "Saved";
+      els.localModeStatus.className = "status ok";
+      setTimeout(() => (els.localModeStatus.textContent = ""), 2000);
+    });
+  }
+
+  async function loadLocalMode() {
+    const r = await fetch("/api/billing/balance");
+    if (!r.ok) return;
+    const bal = await r.json();
+    billingState = bal;
+    const mode = bal.billing_mode === "system" ? "system" : "byok";
+    applyLocalMode(mode);
+  }
+
   (async () => {
     setIcons();
     attachDirtyTracking();
     await new Promise((r) => setTimeout(r, 30));
     if (window.__aiApplyAnonymous) return;
+    await loadConfig();
     await loadSettings();
-    await loadBilling();
+    if (isLocal) {
+      await loadLocalMode();
+    } else {
+      await loadBilling();
+    }
     await loadCriteria();
     await loadUploadedCvs();
     initScrollSpy();

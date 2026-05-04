@@ -49,6 +49,9 @@ def start_run(
             raise HTTPException(
                 400, "set your Anthropic API key in settings first (bring-your-own-key mode)"
             )
+    elif billing_mode == BillingMode.system:
+        # Local-only mode — claude CLI presence/auth is checked in pipeline.
+        pass
     else:
         cost = COST_BY_MODEL.get(user.generation_model, 100)
         if (user.token_balance_centitokens or 0) < cost:

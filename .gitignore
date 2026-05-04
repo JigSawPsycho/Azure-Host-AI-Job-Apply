@@ -13,6 +13,7 @@ data/
 # Env
 .env
 .env.local
+.azureenv
 
 # Azure deployment dumps — contain live secrets (OAuth, DB password, AI keys)
 webapp-config*.json

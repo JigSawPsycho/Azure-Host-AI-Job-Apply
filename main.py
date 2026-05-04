@@ -22,7 +22,7 @@ if __name__ == "__main__":
 
     uvicorn.run(
         "main:app",
-        host=os.environ.get("HOST", "127.0.0.1"),
+        host=os.environ.get("HOST", "localhost"),
         port=int(os.environ.get("PORT", "8000")),
         reload=True,
     )

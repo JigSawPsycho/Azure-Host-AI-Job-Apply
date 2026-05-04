@@ -36,8 +36,8 @@
       </div>
 
       <div class="stack" style="gap: 8px;">
-        <a class="btn block lg" href="/auth/google/login" id="g-btn"></a>
-        <a class="btn block lg" href="/auth/github/login" id="gh-btn"></a>
+        <a class="btn block lg" href="/auth/google/login" id="g-btn" hidden></a>
+        <a class="btn block lg" href="/auth/github/login" id="gh-btn" hidden></a>
         <a class="btn primary block lg" href="/auth/ms/login" id="ms-btn"></a>
       </div>
 
@@ -52,6 +52,16 @@
     document.getElementById("g-btn").innerHTML = window.I.google(14) + " Continue with Google";
     document.getElementById("gh-btn").innerHTML = window.I.github(14) + " Continue with GitHub";
     document.getElementById("ms-btn").innerHTML = window.I.mail(14) + " Continue with email";
+
+    fetch("/api/config").then((r) => r.json()).then((cfg) => {
+      if (cfg.local) {
+        // Local dev has no auth — bounce straight to the app.
+        window.location.replace("/");
+        return;
+      }
+      document.getElementById("g-btn").hidden = false;
+      document.getElementById("gh-btn").hidden = false;
+    }).catch(() => {});
 
     (() => {
       const params = new URLSearchParams(window.location.search);

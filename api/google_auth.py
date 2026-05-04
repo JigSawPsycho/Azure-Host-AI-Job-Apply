@@ -22,8 +22,14 @@ from sqlalchemy.orm import Session
 from db import User
 from db.session import SessionLocal
 from .auth_common import find_or_create_user
+from .env import is_local
 
 router = APIRouter(prefix="/auth/google", tags=["auth"])
+
+
+def _block_if_local() -> None:
+    if is_local():
+        raise HTTPException(404, "Google auth disabled in local mode")
 
 CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
@@ -39,6 +45,7 @@ USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 
 @router.get("/login")
 def login(request: Request) -> RedirectResponse:
+    _block_if_local()
     if not CLIENT_ID:
         raise HTTPException(
             501,
@@ -62,6 +69,7 @@ def login(request: Request) -> RedirectResponse:
 
 @router.get("/callback")
 def callback(request: Request, code: str, state: str) -> RedirectResponse:
+    _block_if_local()
     if state != request.session.get("oauth_state"):
         raise HTTPException(400, "OAuth state mismatch")
     request.session.pop("oauth_state", None)

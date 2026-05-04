@@ -62,6 +62,7 @@ class BillingMode(str, enum.Enum):
 
     tokens = "tokens"
     byok = "byok"
+    system = "system"
 
 
 class TokenLedgerReason(str, enum.Enum):

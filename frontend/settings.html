@@ -35,7 +35,7 @@
 
       <div class="settings-grid">
         <div class="settings-nav" id="settings-nav">
-          <button data-section="billing" class="active">Billing &amp; tokens</button>
+          <button data-section="billing" class="active" data-host-only>Billing &amp; tokens</button>
           <button data-section="anthropic">Anthropic API</button>
           <button data-section="github">GitHub integration</button>
           <button data-section="uploads">Direct CV upload</button>
@@ -45,7 +45,7 @@
         </div>
 
         <div>
-          <div id="sec-billing" class="card settings-section">
+          <div id="sec-billing" class="card settings-section" data-host-only>
             <div class="card-header">
               <div>
                 <div class="card-title">Billing &amp; tokens</div>
@@ -124,6 +124,31 @@
                 <div class="card-sub">Used to generate cover letters and tailored CVs.</div>
               </div>
               <span id="anthropic-inactive-badge" class="badge" hidden>Inactive · using tokens</span>
+            </div>
+            <div class="settings-row" id="local-mode-row" hidden>
+              <div>
+                <div class="label">Generation source</div>
+                <div class="desc">Local dev: choose between your own Anthropic API key or your Claude subscription via the local Claude CLI.</div>
+              </div>
+              <div class="control">
+                <div class="billing-mode-group" id="local-modes">
+                  <label class="billing-mode" data-mode="byok">
+                    <input type="radio" name="local-mode" value="byok" />
+                    <div>
+                      <div class="bm-title">Use my own Anthropic API key</div>
+                      <div class="bm-desc">Direct billing through Anthropic.</div>
+                    </div>
+                  </label>
+                  <label class="billing-mode" data-mode="system">
+                    <input type="radio" name="local-mode" value="system" />
+                    <div>
+                      <div class="bm-title">Use system Claude (subscription)</div>
+                      <div class="bm-desc">Routes through the local Claude CLI — uses your Claude subscription, no API key needed.</div>
+                    </div>
+                  </label>
+                </div>
+                <p class="status" id="local-mode-status" aria-live="polite" style="margin-top: 8px;"></p>
+              </div>
             </div>
             <div class="settings-row">
               <div>
