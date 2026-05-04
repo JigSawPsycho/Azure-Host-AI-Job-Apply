@@ -173,6 +173,12 @@ def start_checkout(
         raise HTTPException(501, "Stripe is not configured (STRIPE_SECRET_KEY missing)")
 
     customer_id = user.stripe_customer_id
+    if customer_id:
+        try:
+            stripe.Customer.retrieve(customer_id)
+        except stripe.error.InvalidRequestError:
+            log.warning("stale stripe_customer_id %s for user %s, recreating", customer_id, user.id)
+            customer_id = None
     if not customer_id:
         cust = stripe.Customer.create(
             email=user.email,
