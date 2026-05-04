@@ -1,145 +1,224 @@
 # ai-apply
 
-Multi-tenant web app: each signed-in dev connects a GitHub repo of CV files,
-configures search criteria, and clicks **Run** to scrape job boards and have
-Claude draft cover letters per role. Drafts surface in a port of the
-single-user Apply UI for review/edit/mark-sent. Optional PR delivery pushes
-artefacts back to the user's repo.
+Multi-tenant web app that scrapes job boards, asks Claude to draft a tailored
+cover letter for each role using your CVs, and surfaces the drafts in a
+review-and-send UI. Runs locally on SQLite or hosts on Azure (App Service +
+Postgres + Key Vault).
 
-## Layout
+> **For AI agents working on this code:** read [CLAUDE.md](CLAUDE.md) first —
+> it captures the invariants (anonymity contract, token-billing idempotency,
+> secret handling) that aren't obvious from skimming files.
+
+## What it does
+
+You sign in, point it at your CV files, define one or more job-search
+criteria, and click **Run**. A background worker scrapes the boards you
+selected, picks the best CV per listing, generates a cover letter via
+Claude, and saves each one as a reviewable draft. You read each draft in
+the Apply UI, edit it inline, then mark it sent (or skip). Drafts never
+leave the app — there's no auto-submit.
+
+Sites supported today:
+
+- **Seek** (Australia + New Zealand)
+- **Wanted** (Korea)
+
+Sign-in providers:
+
+- **GitHub OAuth** (also unlocks read access to a CV repo).
+- **Google OIDC** (sign-in only).
+- **Email/password via Microsoft Entra** (auth code flow). External ID
+  and B2C tenants both work.
+
+## How it works
 
 ```
-main.py                 ← uvicorn entrypoint for local dev
-pyproject.toml          ← deps
-.env.example            ← required config
-api/                    ← FastAPI handlers
-  app.py                ← create_app()
-  auth.py               ← GitHub OAuth (full)
-  google_auth.py        ← Google OIDC (full; needs GOOGLE_CLIENT_ID)
-  email_auth.py         ← email/password stubs — wire to your IdP
-  secrets.py            ← envelope-encrypted secret store (local + KV stub)
-  settings_routes.py    ← API key, model choice, repo, criteria
-  runs.py               ← POST/GET runs
-  applications_routes.py← list/edit/mark-sent (port of /api/mark-sent)
-  models_const.py       ← Anthropic model dropdown catalogue
-worker/                 ← background pipeline (FastAPI BackgroundTask for now)
-  pipeline.py           ← execute_run(run_id) orchestrator
-  scrape.py             ← programmatic adapter around vendored scrapers
-  github_repo.py        ← list+fetch CV files via GitHub API
-  extractors/extract.py ← md / pdf / docx → plaintext
-  generate.py           ← Anthropic call + anonymity enforcement
-  scraper/              ← vendored copy of /scraper/ (lift-and-shift)
-  prompts/              ← copy of /scripts/prompts/process-job.md
-  writing_guides/       ← en.md, ko.md
-db/                     ← SQLAlchemy 2.0 models + engine
-frontend/               ← static pages + JS port of website/apply.*
-  index.html, settings.html, run.html
-  login.html, signup.html
-  static/apply.{css,js}, settings.js, run.js, shell.{css,js}
-  static/login.js, signup.js
+┌─────────┐    ┌────────────────┐    ┌────────────────────────────┐
+│ Browser │───▶│ FastAPI (api/) │───▶│ SQLAlchemy + SecretStore   │
+└─────────┘    └────────────────┘    └────────────────────────────┘
+                       │
+                       │  POST /api/runs
+                       ▼
+              ┌──────────────────────┐
+              │ BackgroundTask:      │
+              │ worker.pipeline      │
+              └──────────────────────┘
+                  │     │     │
+                  ▼     ▼     ▼
+              scrape  fetch  generate(Anthropic)
+              boards  CVs    → save Application
 ```
 
-## Local quickstart
+Per run, the worker (`worker/pipeline.execute_run`):
+
+1. Loads the user's enabled `Criteria` rows.
+2. Calls each scraper, dedupes against the user's `Job` table, trims to
+   `max_jobs_per_run`.
+3. Loads CVs from either the `uploaded_cv` table (direct upload) or the
+   linked GitHub repo.
+4. For each listing up to `max_drafts_per_run`, calls Claude with a
+   strict system prompt that picks the best-fit CV and drafts the
+   letter. Output is plain text only — no markdown, no meta-commentary.
+5. Persists each draft as an `Application` row (status `unsent`).
+6. In host-billed mode, debits the per-model cost from the user's
+   token balance and writes a matching ledger entry.
+
+The worker is deliberately framework-free so it can be moved to a queue
+(Container Apps Job, Storage Queue, Celery) without touching the API.
+
+### Billing
+
+Two modes per user:
+
+- **`tokens` (default)** — generation calls go to Anthropic with the
+  host's `ANTHROPIC_HOST_API_KEY`. Each call debits centitokens from
+  the user's balance (Haiku 0.25, Sonnet 1, Opus 5 tokens per letter).
+  Top-ups go through Stripe Checkout; the webhook credits idempotently.
+- **`byok`** — the user supplies their own `sk-ant-...` key. No tokens
+  are debited. The key is stored envelope-encrypted (Fernet locally,
+  Key Vault in prod).
+
+### Cover-letter contract
+
+The system prompt in `worker/generate.py:COVER_LETTER_DIRECTIVE`:
+
+- Bans markdown, headings, bullets, code blocks.
+- Bans meta-commentary ("as an AI", "as a language model", "Here is
+  the letter…", drafting notes, hedges).
+- Allows the model to use the `<skip>reason</skip>` token when the
+  candidate clearly fails a hard requirement.
+- **Does not** ban the words "Claude" or "Anthropic" — those legitimately
+  appear in cover letters for jobs at Anthropic or at companies that
+  integrate Claude. The safety net is the human review in the Apply UI
+  before mark-sent.
+
+The model the user picks (Settings → model dropdown) is recorded on
+each `Application` row as **internal metadata only** — never written
+into `body_md` or anything employer-visible.
+
+## Run it locally
+
+Requires Python 3.11+.
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt   # or: pip install -e .
+git clone <this-repo>
+cd Azure-Host-AI-Job-Apply
+
+python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
+pip install -r requirements-dev.txt                  # runtime + pytest
 
 cp .env.example .env
-# fill in SESSION_SECRET, SECRETS_MASTER_KEY, and GitHub OAuth IDs
-# Generate a master key:
-#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
 
+Fill in `.env`. The two values you must generate yourself:
+
+```bash
+# SESSION_SECRET — any random URL-safe string
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+
+# SECRETS_MASTER_KEY — Fernet key for the envelope-encrypted local secret store
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+For sign-in to work, register at least one OAuth provider:
+
+- **GitHub** — https://github.com/settings/developers, callback
+  `http://localhost:8000/auth/github/callback`. Set `GITHUB_CLIENT_ID`
+  and `GITHUB_CLIENT_SECRET`.
+- **Google (optional)** — https://console.cloud.google.com/apis/credentials,
+  redirect `http://localhost:8000/auth/google/callback`, scopes
+  `openid email profile`.
+- **Entra (optional)** — App registration with web platform redirect
+  `http://localhost:8000/auth/ms/callback`, ID tokens enabled.
+
+Then start the app:
+
+```bash
 python main.py
 # → http://127.0.0.1:8000
 ```
 
-### Sign-in providers
+The first run creates `data/ai-apply.db` (SQLite) and `data/secrets.json`
+(local secret store). Both are gitignored.
 
-The login page (`/login.html`) offers three options:
+### First-time setup in the UI
 
-1. **GitHub OAuth** — fully wired. Register at
-   https://github.com/settings/developers; callback
-   `http://localhost:8000/auth/github/callback`. Set `GITHUB_CLIENT_ID`
-   + `GITHUB_CLIENT_SECRET` in `.env`.
-2. **Google OAuth (OIDC)** — fully wired. Register at
-   https://console.cloud.google.com/apis/credentials; redirect URI
-   `http://localhost:8000/auth/google/callback`; scopes `openid email
-   profile`. Set `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET`.
-   Returns 501 if not configured (so the button surfaces a clear error
-   rather than redirecting into a broken consent screen).
-3. **Email/password** — UI is built; backend endpoints in
-   `api/email_auth.py` are stubs returning 501. Wire them to your
-   identity provider (e.g. Azure AD B2C / Entra External ID). They
-   should look up or create a `User` row by email and set
-   `request.session["user_id"]`.
+1. Open `http://127.0.0.1:8000`, click **Continue with GitHub** (or
+   another provider you configured) on the login page.
+2. **Settings**:
+   - Choose a billing mode. In `byok` mode, paste your Anthropic API
+     key (`sk-ant-...`).
+   - Pick a model.
+   - Provide CVs — either upload `.md`/`.pdf`/`.docx` files, or
+     enter `repo_full_name` (e.g. `octocat/cv`) and `cv_dir`.
+   - Add at least one search criteria row.
+3. **Run** — kicks the pipeline. The page polls `/api/runs/{id}` until
+   the run finishes.
+4. **Applications** — review each draft, edit inline, mark sent.
 
-After signing in:
-
-1. **Settings** → paste your Anthropic API key, choose a model, set
-   `repo_full_name` (e.g. `octocat/cv`) + `cv_dir`.
-2. Add at least one **search criteria** row.
-3. **Run** → start. Polls `/api/runs/{id}` until done.
-4. **Applications** → review/edit drafts, mark sent.
-
-## Model selection
-
-`api/models_const.py` lists the Anthropic models surfaced in the Settings
-dropdown. Default is **Sonnet 4.6**. Selection is per-user; the chosen
-model ID is recorded on each `application` row as **internal metadata
-only** — never written into `body_md`, the PR title/description, commit
-messages, or anything employer-visible.
-
-The system prompt (`worker/generate.py:ANONYMITY_CLAUSE`) tells the model
-to write in the candidate's first-person voice and avoid meta-commentary
-("as an AI", "as a language model"). It does **not** ban the words
-"Claude" or "Anthropic" — devs applying to Anthropic, or to companies
-that integrate Claude, will have those words appear legitimately. The
-safety net is the human-in-the-loop review on the Applications page
-before mark-sent.
-
-## Tests
-
-Install runtime + test dependencies, then run pytest from the repo root:
+### Run the tests
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements-dev.txt   # pulls in requirements.txt + pytest
-pytest
+pytest                              # full suite
+pytest tests/test_billing.py -vv    # one file
+pytest -k anonymity                 # by name
 ```
 
-`requirements-dev.txt` includes `-r requirements.txt`, so a single install
-covers both the app and the test suite. Alternatively, `pip install -e '.[dev]'`
-works via the `pyproject.toml` extras.
+`tests/conftest.py` sets the env vars the app needs and points
+`DATABASE_URL` at a per-process tempdir SQLite, so tests need no `.env`
+and leave no state behind.
 
-`tests/conftest.py` sets the env vars the app requires (`SESSION_SECRET`,
-`SECRETS_MASTER_KEY`, `GITHUB_CLIENT_ID/SECRET`) and points `DATABASE_URL` at
-a per-run temporary SQLite file, so tests need no `.env` and leave no state
-behind. Run a single file or test with e.g. `pytest tests/test_api.py -k anonymity -vv`.
+## Project layout
+
+```
+main.py                      uvicorn entrypoint for local dev
+pyproject.toml               deps (mirrored in requirements*.txt)
+.env.example                 every required + optional env var, documented
+Dockerfile + startup.sh      gunicorn config for App Service / containers
+api/                         FastAPI handlers (one router per file)
+db/                          SQLAlchemy 2.0 models + engine + bootstrap
+worker/                      Background pipeline (no FastAPI types)
+  pipeline.py                  execute_run(run_id) — orchestrator
+  scrape.py + scraper/         vendored Seek + Wanted clients
+  generate.py                  Anthropic call + output sanitisation
+  extractors/                  md/txt/pdf/docx → plaintext
+frontend/                    static HTML + vanilla JS (no build step)
+infra/                       Bicep + deployment notes for Azure
+tests/                       pytest; conftest.py sets env + temp SQLite
+```
+
+A more detailed map (and the design invariants that bind it together)
+is in [CLAUDE.md](CLAUDE.md).
 
 ## Production deployment (Azure)
 
-The architecture maps cleanly to:
+The architecture maps cleanly onto:
 
-- **App Service (Linux)** — the FastAPI app behind uvicorn/gunicorn.
+- **App Service (Linux, Python 3.11)** — runs gunicorn via `startup.sh`.
 - **Azure Database for PostgreSQL Flexible Server** — set `DATABASE_URL`.
-- **Key Vault** — replace the `LocalSecretStore` in `api/secrets.py` with an
-  Azure Key Vault implementation; `anthropic_key_ref` and
-  `github_token_ref` already store opaque references, not plaintext.
-- **Container Apps Job** or a **Storage Queue + Function** — replace
-  `BackgroundTasks` in `api/runs.py` with a queued task. The
-  `execute_run(run_id)` function is deliberately self-contained (no
-  FastAPI types, opens its own DB session) so the swap is mechanical.
-- **Front Door / Static Web Apps** — only needed if you split the
-  static frontend out; today it's served by the same FastAPI app.
+- **Key Vault** — set `SECRETS_BACKEND=azure-key-vault` and
+  `AZURE_KEY_VAULT_URL`. `DefaultAzureCredential` picks up the App
+  Service system-assigned managed identity.
+- **Container Apps Job** or **Storage Queue + Function** for
+  out-of-process workers (the in-process `BackgroundTasks` is fine for
+  v1, but `worker.pipeline.execute_run` is already self-contained so
+  the swap is mechanical).
 
-See `infra/README.md` for placeholder Bicep notes.
+`infra/main.bicep` provisions all of the above.
+`.github/workflows/acr-deploy.yml` builds a container and restarts the
+Web App on push to `main`. See [infra/README.md](infra/README.md) for
+the full walkthrough.
 
-## Risks (from the plan)
+Production env hardening — set both:
 
-1. Scraper TOS — multi-tenant load is more visible than a single user.
+- `SESSION_HTTPS_ONLY=1` (secure-cookie flag).
+- `TRUST_PROXY_HEADERS=1` (honour `X-Forwarded-Proto` from App Service).
+
+## Known risks
+
+1. **Scraper TOS.** Multi-tenant load is more visible than single-user.
    Throttle and consider per-user proxies before scaling.
-2. CV extraction silently fails on scanned PDFs. The worker shows an error
-   rather than feeding garbage to the LLM.
-3. Cost runaway — `MAX_JOBS_PER_RUN` in `worker/pipeline.py` caps per-run
-   generation count. Surface estimated token cost before kickoff in v2.
+2. **Scanned PDFs.** `pdfplumber` extracts no text from image-only PDFs;
+   the worker surfaces an error rather than feeding garbage to the LLM.
+3. **Cost runaway.** `User.max_drafts_per_run` caps generations per run.
+   Surface estimated token cost before kickoff in v2.
