@@ -2,28 +2,36 @@
 
 Multi-tenant web app that scrapes job boards, asks Claude to draft a tailored
 cover letter for each role using your CVs, and surfaces the drafts in a
-review-and-send UI. Runs locally on SQLite or hosts on Azure (App Service +
-Postgres + Key Vault).
+review-and-send UI. Ships with two modes:
+
+- **Local dev mode** — single-user, no auth, no Stripe. Optionally uses your
+  Claude Code subscription for generation (no API key needed). Runs on
+  SQLite. One command to start.
+- **Hosted mode** — multi-tenant on Azure (App Service + Postgres + Key
+  Vault). OAuth sign-in (GitHub / Google / Entra), Stripe-funded token
+  billing, encrypted user secrets in Key Vault.
 
 > **For AI agents working on this code:** read [CLAUDE.md](CLAUDE.md) first —
 > it captures the invariants (anonymity contract, token-billing idempotency,
-> secret handling) that aren't obvious from skimming files.
+> secret handling, the local-vs-hosted gate) that aren't obvious from
+> skimming files.
 
 ## What it does
 
-You sign in, point it at your CV files, define one or more job-search
-criteria, and click **Run**. A background worker scrapes the boards you
-selected, picks the best CV per listing, generates a cover letter via
-Claude, and saves each one as a reviewable draft. You read each draft in
-the Apply UI, edit it inline, then mark it sent (or skip). Drafts never
-leave the app — there's no auto-submit.
+You sign in (or in local mode, just open the app), point it at your CV
+files, define one or more job-search criteria, and click **Run**. A
+background worker scrapes the boards you selected, picks the best CV per
+listing, generates a cover letter via Claude, and saves each one as a
+reviewable draft. You read each draft in the Apply UI, edit it inline,
+then mark it sent (or skip). Drafts never leave the app — there's no
+auto-submit.
 
 Sites supported today:
 
 - **Seek** (Australia + New Zealand)
 - **Wanted** (Korea)
 
-Sign-in providers:
+Sign-in providers (hosted mode only):
 
 - **GitHub OAuth** (also unlocks read access to a CV repo).
 - **Google OIDC** (sign-in only).
@@ -45,8 +53,9 @@ Sign-in providers:
               └──────────────────────┘
                   │     │     │
                   ▼     ▼     ▼
-              scrape  fetch  generate(Anthropic)
-              boards  CVs    → save Application
+              scrape  fetch  generate
+              boards  CVs    (Anthropic SDK or `claude` CLI)
+                              → save Application
 ```
 
 Per run, the worker (`worker/pipeline.execute_run`):
@@ -66,17 +75,22 @@ Per run, the worker (`worker/pipeline.execute_run`):
 The worker is deliberately framework-free so it can be moved to a queue
 (Container Apps Job, Storage Queue, Celery) without touching the API.
 
-### Billing
+### Billing modes
 
-Two modes per user:
+Three modes per user (`db.models.BillingMode`):
 
-- **`tokens` (default)** — generation calls go to Anthropic with the
-  host's `ANTHROPIC_HOST_API_KEY`. Each call debits centitokens from
-  the user's balance (Haiku 0.25, Sonnet 1, Opus 5 tokens per letter).
-  Top-ups go through Stripe Checkout; the webhook credits idempotently.
+- **`tokens` (hosted default)** — generation calls go to Anthropic with
+  the host's `ANTHROPIC_HOST_API_KEY`. Each call debits centitokens
+  from the user's balance (Haiku 0.25, Sonnet 1, Opus 5 tokens per
+  letter). Top-ups via Stripe Checkout; the webhook credits
+  idempotently. **Disabled in local mode.**
 - **`byok`** — the user supplies their own `sk-ant-...` key. No tokens
-  are debited. The key is stored envelope-encrypted (Fernet locally,
-  Key Vault in prod).
+  debited. The key is stored envelope-encrypted (Fernet locally, Key
+  Vault in prod). Available in both modes.
+- **`system` (local only)** — generation is routed through the local
+  `claude` binary (Claude Code) and uses your Claude subscription
+  instead of an API key. The auto-created local user defaults to this
+  mode. **Rejected in hosted mode.**
 
 ### Cover-letter contract
 
@@ -98,7 +112,7 @@ into `body_md` or anything employer-visible.
 
 ## Run it locally
 
-Requires Python 3.11+.
+Requires Python 3.11+. The fast path:
 
 ```bash
 git clone <this-repo>
@@ -107,54 +121,53 @@ cd Azure-Host-AI-Job-Apply
 python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
 pip install -r requirements-dev.txt                  # runtime + pytest
 
-cp .env.example .env
-```
-
-Fill in `.env`. The two values you must generate yourself:
-
-```bash
-# SESSION_SECRET — any random URL-safe string
-python -c "import secrets; print(secrets.token_urlsafe(32))"
-
-# SECRETS_MASTER_KEY — Fernet key for the envelope-encrypted local secret store
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-```
-
-For sign-in to work, register at least one OAuth provider:
-
-- **GitHub** — https://github.com/settings/developers, callback
-  `http://localhost:8000/auth/github/callback`. Set `GITHUB_CLIENT_ID`
-  and `GITHUB_CLIENT_SECRET`.
-- **Google (optional)** — https://console.cloud.google.com/apis/credentials,
-  redirect `http://localhost:8000/auth/google/callback`, scopes
-  `openid email profile`.
-- **Entra (optional)** — App registration with web platform redirect
-  `http://localhost:8000/auth/ms/callback`, ID tokens enabled.
-
-Then start the app:
-
-```bash
 python main.py
 # → http://127.0.0.1:8000
 ```
 
-The first run creates `data/ai-apply.db` (SQLite) and `data/secrets.json`
-(local secret store). Both are gitignored.
+That's it. On first boot the app:
 
-### First-time setup in the UI
+- Auto-generates `SESSION_SECRET` and `SECRETS_MASTER_KEY` and persists
+  them to `data/.dev-secrets.json` (gitignored).
+- Creates `data/ai-apply.db` (SQLite) and `data/secrets.json`
+  (envelope-encrypted user-secret sidecar).
+- Detects local mode (no `SECRETS_BACKEND=azure-key-vault`), disables
+  the OAuth providers, and auto-creates a single
+  `local@dev.local` user. The login page redirects straight into the
+  app — no sign-in screen.
 
-1. Open `http://127.0.0.1:8000`, click **Continue with GitHub** (or
-   another provider you configured) on the login page.
-2. **Settings**:
-   - Choose a billing mode. In `byok` mode, paste your Anthropic API
-     key (`sk-ant-...`).
-   - Pick a model.
-   - Provide CVs — either upload `.md`/`.pdf`/`.docx` files, or
-     enter `repo_full_name` (e.g. `octocat/cv`) and `cv_dir`.
-   - Add at least one search criteria row.
-3. **Run** — kicks the pipeline. The page polls `/api/runs/{id}` until
-   the run finishes.
-4. **Applications** — review each draft, edit inline, mark sent.
+You'll need one or two more things before a run actually works:
+
+### Generation source
+
+The auto-created user starts in **`system` billing mode**, which
+shells out to the local Claude Code CLI:
+
+1. Install Claude Code from <https://claude.com/claude-code>.
+2. Run `claude` once and sign in.
+3. (Optional) If `claude` isn't on your `PATH`, set
+   `CLAUDE_CLI_PATH=/absolute/path/to/claude` in `.env`.
+
+If you'd rather use an Anthropic API key directly, open
+**Settings → Anthropic API**, switch the local-mode toggle to **"Use my
+own Anthropic API key"**, paste an `sk-ant-...` key, and save. Either
+mode works — only one needs to be set up.
+
+### CV source
+
+Open **Settings → Direct CV upload** and upload one or more
+`.md`/`.pdf`/`.docx`/`.txt` files (250 KB per file, 5 MB total). This
+is the easiest path in local mode because the GitHub OAuth flow is
+disabled — there's no way to wire up a repo without sign-in.
+
+### Run a search
+
+1. **Settings → Search criteria** — add at least one row (keywords,
+   location, site).
+2. **Run** (top nav) — kicks the pipeline. The page polls
+   `/api/runs/{id}` until the run finishes.
+3. **Applications** (top nav) — review each draft, edit inline, mark
+   sent.
 
 ### Run the tests
 
@@ -168,6 +181,25 @@ pytest -k anonymity                 # by name
 `DATABASE_URL` at a per-process tempdir SQLite, so tests need no `.env`
 and leave no state behind.
 
+## Local vs hosted: what's different
+
+The same codebase runs in both modes. The flag is `api.env.is_local()`,
+which is True whenever `SECRETS_BACKEND != "azure-key-vault"`.
+
+| Concern | Local | Hosted |
+|---|---|---|
+| **Setup** | `pip install -r requirements-dev.txt && python main.py`. No env vars required. | Bicep-provisioned App Service + Postgres + Key Vault; OAuth client IDs in app settings; Stripe keys for billing. |
+| **Sign-in** | None — auto-logged-in as `local@dev.local`. The login page bounces straight to the app. | GitHub / Google / Entra. Email is the canonical account ID; users are locked to their signup provider. |
+| **Multi-tenant?** | No — one shared local user. | Yes — every signed-in user is fully isolated (jobs, applications, criteria, secrets). |
+| **Secrets** | `SESSION_SECRET` + `SECRETS_MASTER_KEY` auto-generated into `data/.dev-secrets.json`. User-supplied secrets (Anthropic key, GitHub token) Fernet-encrypted into `data/secrets.json`. | Both must be set in App Service config. User-supplied secrets stored in Azure Key Vault via the App Service managed identity. |
+| **Database** | SQLite at `data/ai-apply.db`. | Azure Database for PostgreSQL Flexible Server (set `DATABASE_URL`). |
+| **Generation** | `system` mode (local `claude` CLI, your subscription) **or** `byok` (your own `sk-ant-...`). | `tokens` (host-paid via `ANTHROPIC_HOST_API_KEY`, debited from balance) **or** `byok`. |
+| **Token billing** | Disabled. The Billing & Tokens settings panel is hidden. | Active. Three Stripe-backed packages (Starter / Standard / Bulk), webhook-credited idempotently. |
+| **Stripe** | Not used. `/api/billing/checkout` returns 501 if hit. | Required for `tokens` mode top-ups. Webhook signs against `STRIPE_WEBHOOK_SECRET`. |
+| **Background worker** | In-process FastAPI `BackgroundTasks`. Run state recovered on restart by `recover_orphaned_runs()`. | Same code path today; can be lifted to Container Apps Job / Storage Queue + Function without touching the API. |
+| **Top-nav user panel** | "Local dev — no auth", no logout. | Provider name, email, log-out button. |
+| **Billing pill** | "System Claude" or "Own API key" label, no balance. | Token balance + buy-more button, or "Using own API key". |
+
 ## Project layout
 
 ```
@@ -176,11 +208,12 @@ pyproject.toml               deps (mirrored in requirements*.txt)
 .env.example                 every required + optional env var, documented
 Dockerfile + startup.sh      gunicorn config for App Service / containers
 api/                         FastAPI handlers (one router per file)
+  env.py                       is_local() + ensure_local_secrets()
 db/                          SQLAlchemy 2.0 models + engine + bootstrap
 worker/                      Background pipeline (no FastAPI types)
   pipeline.py                  execute_run(run_id) — orchestrator
   scrape.py + scraper/         vendored Seek + Wanted clients
-  generate.py                  Anthropic call + output sanitisation
+  generate.py                  Anthropic SDK call OR `claude` CLI subprocess
   extractors/                  md/txt/pdf/docx → plaintext
 frontend/                    static HTML + vanilla JS (no build step)
 infra/                       Bicep + deployment notes for Azure
@@ -198,7 +231,9 @@ The architecture maps cleanly onto:
 - **Azure Database for PostgreSQL Flexible Server** — set `DATABASE_URL`.
 - **Key Vault** — set `SECRETS_BACKEND=azure-key-vault` and
   `AZURE_KEY_VAULT_URL`. `DefaultAzureCredential` picks up the App
-  Service system-assigned managed identity.
+  Service system-assigned managed identity. **`SECRETS_BACKEND=azure-key-vault`
+  is also what flips the app out of local mode** — without it the
+  hosted deployment would boot with auth disabled.
 - **Container Apps Job** or **Storage Queue + Function** for
   out-of-process workers (the in-process `BackgroundTasks` is fine for
   v1, but `worker.pipeline.execute_run` is already self-contained so
@@ -222,3 +257,8 @@ Production env hardening — set both:
    the worker surfaces an error rather than feeding garbage to the LLM.
 3. **Cost runaway.** `User.max_drafts_per_run` caps generations per run.
    Surface estimated token cost before kickoff in v2.
+4. **Local-mode auth bypass on Azure.** If `SECRETS_BACKEND` is unset
+   on a deployed App Service, the app boots in local-dev mode with
+   auth disabled and a shared `local@dev.local` user. The Bicep
+   template sets it correctly; verify in App Service → Configuration
+   if you ever provision by hand.
