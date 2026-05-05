@@ -31,7 +31,14 @@ from db import (
 )
 from db.session import SessionLocal
 from .extractors import CVFile
-from .generate import GenerationError, generate_cover_letter
+from .generate import (
+    CLAUDE_INSTALL_URL,
+    ClaudeCliAuthError,
+    ClaudeCliMissingError,
+    GenerationError,
+    generate_cover_letter,
+    resolve_claude_cli,
+)
 from .github_repo import GitHubClient
 from .scrape import ScrapeError, scrape
 from .scraper.models import SearchCriteria
@@ -80,8 +87,11 @@ def _run(session: Session, run_id: int) -> None:
 
     # Pick the Anthropic key based on the user's billing mode. In tokens
     # mode we charge their balance and use the host's API key; in byok
-    # mode we use the user's own key and don't touch the balance.
+    # mode we use the user's own key and don't touch the balance; in
+    # system mode (local dev) we shell out to the `claude` CLI which uses
+    # the developer's Claude subscription — no key, no balance.
     billing_mode = user.billing_mode or BillingMode.tokens
+    anthropic_key: str | None = None
     if billing_mode == BillingMode.byok:
         try:
             anthropic_key = store.get(user.anthropic_key_ref) if user.anthropic_key_ref else None
@@ -90,6 +100,23 @@ def _run(session: Session, run_id: int) -> None:
             return
         if not anthropic_key:
             _fail(session, run, "anthropic key missing (byok mode)")
+            return
+    elif billing_mode == BillingMode.system:
+        if not resolve_claude_cli():
+            _fail(
+                session,
+                run,
+                f"Claude Code CLI not found. Install from {CLAUDE_INSTALL_URL} "
+                "(or set CLAUDE_CLI_PATH), then run `claude` once to sign in.",
+            )
+            return
+        if not _claude_cli_logged_in():
+            _fail(
+                session,
+                run,
+                "Claude Code CLI is not logged in. Open a terminal and run "
+                "`claude` (or `claude /login`) to sign in with your subscription.",
+            )
             return
     else:
         anthropic_key = os.environ.get("ANTHROPIC_HOST_API_KEY")
@@ -174,7 +201,16 @@ def _run(session: Session, run_id: int) -> None:
                 job=listing.to_dict(),
                 cvs=cvs,
                 language=listing.language or "en",
+                use_system_claude=billing_mode == BillingMode.system,
             )
+        except (ClaudeCliMissingError, ClaudeCliAuthError) as exc:
+            # Environmental failure — every subsequent job will hit the same
+            # error. Fail the run cleanly so the user fixes the install/login
+            # instead of burning through the listing list with empty drafts.
+            job.status = JobStatus.skipped
+            session.commit()
+            _fail(session, run, str(exc))
+            return
         except GenerationError as exc:
             log.warning("generation failed for %s: %s", listing.jobId, exc)
             job.status = JobStatus.skipped
@@ -220,6 +256,35 @@ def _run(session: Session, run_id: int) -> None:
         session.commit()
 
     _finish(session, run)
+
+
+def _claude_cli_logged_in() -> bool:
+    """Cheap auth check: run `claude -p ping` with tiny prompt + short timeout.
+
+    Logged-in: exits 0 (cost: a handful of tokens). Not logged in: exits non-zero
+    with auth-related stderr. We only inspect exit + auth-pattern match.
+    """
+    import subprocess
+    from .generate import _looks_like_auth_error
+
+    cli = resolve_claude_cli()
+    if not cli:
+        return False
+    try:
+        proc = subprocess.run(
+            [cli, "-p", "--output-format", "text", "ping"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        # Be permissive — let the actual generation surface real errors.
+        return True
+    if proc.returncode == 0:
+        return True
+    return not _looks_like_auth_error(proc.stderr or "", proc.stdout or "")
 
 
 def _to_search(c: Criteria) -> SearchCriteria:

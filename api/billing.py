@@ -35,6 +35,7 @@ from db import (
     get_session,
 )
 from .auth import current_user
+from .env import is_local
 from .models_const import (
     PACKAGES_BY_KEY,
     TOKEN_PACKAGES,
@@ -92,7 +93,7 @@ class BalanceOut(BaseModel):
 
 
 class ModeUpdate(BaseModel):
-    billing_mode: str = Field(pattern="^(tokens|byok)$")
+    billing_mode: str = Field(pattern="^(tokens|byok|system)$")
 
 
 class CheckoutIn(BaseModel):
@@ -149,11 +150,23 @@ def set_mode(
     user: User = Depends(current_user),
     session: Session = Depends(get_session),
 ) -> BalanceOut:
-    if payload.billing_mode == BillingMode.byok.value and not user.anthropic_key_ref:
+    # Prod gates byok behind a saved key (no fallback). Local allows the
+    # mode switch optimistically — runs fail with a clear message later if
+    # the key is still missing, and we want users to be able to flip the
+    # mode before pasting their key without a chicken-and-egg lock-out.
+    if (
+        payload.billing_mode == BillingMode.byok.value
+        and not user.anthropic_key_ref
+        and not is_local()
+    ):
         raise HTTPException(
             400,
             "set your Anthropic API key in settings before switching to bring-your-own-key mode",
         )
+    if payload.billing_mode == BillingMode.system.value and not is_local():
+        raise HTTPException(400, "system mode is only available in local dev")
+    if payload.billing_mode == BillingMode.tokens.value and is_local():
+        raise HTTPException(400, "token billing is disabled in local dev")
     user.billing_mode = BillingMode(payload.billing_mode)
     session.commit()
     return get_balance(user)

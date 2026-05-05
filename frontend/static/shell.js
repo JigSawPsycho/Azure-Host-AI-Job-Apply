@@ -40,9 +40,18 @@
   };
 
   try {
+    const cfgRes = await fetch("/api/config", { cache: "no-store" });
+    if (cfgRes.ok) {
+      const cfg = await cfgRes.json();
+      window.__aiApplyLocal = !!cfg.local;
+    }
+  } catch {}
+
+  try {
     const res = await fetch("/api/settings", { cache: "no-store" });
     if (res.status === 401) {
       window.__aiApplyAnonymous = true;
+      if (window.__aiApplyLocal) return;  // local has no auth — no redirect
       if (!/\/(login|signup)\.html$/.test(window.location.pathname)) {
         const next = encodeURIComponent(window.location.pathname + window.location.search);
         window.location.replace(`/login.html?next=${next}`);
@@ -80,9 +89,15 @@
       .map((p) => p[0].toUpperCase())
       .join("");
     const PROVIDER_LABEL = { github: "GitHub", google: "Google", email: "Email" };
-    const providerLine = s.auth_provider
+    const local = !!window.__aiApplyLocal;
+    const providerLine = !local && s.auth_provider
       ? `<div class="provider">Signed in via ${escapeHtml(PROVIDER_LABEL[s.auth_provider] || s.auth_provider)}</div>`
+      : local
+      ? `<div class="provider">Local dev — no auth</div>`
       : "";
+    const logoutItem = local
+      ? ""
+      : `<button class="menu-item danger" type="button" id="logout-btn">${window.I.logout(14)} Log out</button>`;
 
     el.innerHTML = `
       <button class="user-trigger" id="user-trigger" type="button">
@@ -97,7 +112,7 @@
           ${providerLine}
         </div>
         <a class="menu-item" href="/settings.html">${window.I.settings(14)} Account settings</a>
-        <button class="menu-item danger" type="button" id="logout-btn">${window.I.logout(14)} Log out</button>
+        ${logoutItem}
       </div>
     `;
     if (billingPill) el.parentNode?.insertBefore(billingPill, el);
@@ -109,12 +124,15 @@
     document.addEventListener("mousedown", (e) => {
       if (!el.contains(e.target)) menu.hidden = true;
     });
-    el.querySelector("#logout-btn").addEventListener("click", async () => {
-      try {
-        await fetch("/auth/github/logout", { method: "POST" });
-      } catch {}
-      window.location.replace("/login.html");
-    });
+    const logoutBtn = el.querySelector("#logout-btn");
+    if (logoutBtn) {
+      logoutBtn.addEventListener("click", async () => {
+        try {
+          await fetch("/auth/github/logout", { method: "POST" });
+        } catch {}
+        window.location.replace("/login.html");
+      });
+    }
   }
 
   function escapeHtml(s) {
@@ -137,6 +155,20 @@
       return null;
     }
     window.__aiApplyBilling = bal;
+
+    // Local dev: no tokens, no purchase pill — just a mode label.
+    if (window.__aiApplyLocal) {
+      const pill = document.createElement("div");
+      pill.className = "billing-pill byok";
+      pill.title = "Open generation settings";
+      pill.style.cursor = "pointer";
+      pill.addEventListener("click", () => {
+        window.location.href = "/settings.html#anthropic";
+      });
+      const label = bal.billing_mode === "system" ? "System Claude" : "Own API key";
+      pill.innerHTML = `<span class="bp-icon">⌘</span><span>${label}</span>`;
+      return pill;
+    }
 
     if (bal.billing_mode === "byok") {
       const pill = document.createElement("div");

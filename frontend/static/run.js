@@ -215,7 +215,9 @@
     els.statCriteria.textContent = criteriaRes.length;
 
     const issues = [];
-    if (!s.has_anthropic_key) issues.push("Anthropic API key");
+    const billing = window.__aiApplyBilling;
+    const usingSystemClaude = window.__aiApplyLocal && billing && billing.billing_mode === "system";
+    if (!usingSystemClaude && !s.has_anthropic_key) issues.push("Anthropic API key");
     const hasCvSource = uploadedCount > 0 || (s.github_connected && s.repo_full_name);
     if (!hasCvSource) issues.push("CV source (upload a CV or connect GitHub)");
     if (criteriaRes.length === 0) issues.push("at least one search criteria");
@@ -262,7 +264,7 @@
     const billing = window.__aiApplyBilling;
     const settings = window.__aiApplySettings;
     if (!billing || !settings) return;
-    if (billing.billing_mode === "byok") {
+    if (billing.billing_mode === "byok" || billing.billing_mode === "system" || window.__aiApplyLocal) {
       els.estimate.hidden = true;
       return;
     }

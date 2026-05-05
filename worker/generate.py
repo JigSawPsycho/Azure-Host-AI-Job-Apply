@@ -8,6 +8,9 @@ is the human-in-the-loop review in the apply UI before mark-sent.
 """
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -98,11 +101,12 @@ def _load_system_prompt(language: str) -> str:
 
 
 def generate_cover_letter(
-    api_key: str,
+    api_key: str | None,
     model_id: str,
     job: dict,
     cvs: list[CVFile],
     language: str = "en",
+    use_system_claude: bool = False,
 ) -> GenerationResult:
     if not cvs:
         raise GenerationError("no CVs available to base the letter on")
@@ -134,14 +138,20 @@ def generate_cover_letter(
         f"`<skip>one short reason</skip>` and nothing else.\n"
     )
 
-    client = anthropic.Anthropic(api_key=api_key)
-    resp = client.messages.create(
-        model=model_id,
-        max_tokens=2000,
-        system=_load_system_prompt(language),
-        messages=[{"role": "user", "content": user_msg}],
-    )
-    raw = "".join(block.text for block in resp.content if getattr(block, "type", None) == "text")
+    system_prompt = _load_system_prompt(language)
+    if use_system_claude:
+        raw = _invoke_claude_cli(system_prompt, user_msg, model_id)
+    else:
+        if not api_key:
+            raise GenerationError("anthropic api key missing")
+        client = anthropic.Anthropic(api_key=api_key)
+        resp = client.messages.create(
+            model=model_id,
+            max_tokens=2000,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        raw = "".join(block.text for block in resp.content if getattr(block, "type", None) == "text")
 
     skip_match = _detect_skip(raw)
     if skip_match:
@@ -153,6 +163,102 @@ def generate_cover_letter(
     if _looks_like_refusal(body):
         raise GenerationError("model refused / produced non-letter output")
     return GenerationResult(chosen_cv=chosen, body_md=body, model_used=model_id)
+
+
+CLAUDE_INSTALL_URL = "https://claude.com/claude-code"
+
+
+def resolve_claude_cli() -> str | None:
+    """Locate the `claude` CLI. CLAUDE_CLI_PATH env var overrides PATH lookup.
+
+    Returns absolute path if usable, else None.
+    """
+    override = os.environ.get("CLAUDE_CLI_PATH")
+    if override:
+        # Honor the override verbatim; surface a clear failure later if it's
+        # not actually executable rather than silently falling back to PATH.
+        return override
+    return shutil.which("claude")
+
+
+class ClaudeCliMissingError(GenerationError):
+    """`claude` CLI not on PATH."""
+
+
+class ClaudeCliAuthError(GenerationError):
+    """`claude` CLI present but not logged in."""
+
+
+_AUTH_ERROR_PATTERNS = (
+    "not logged in",
+    "please log in",
+    "please login",
+    "/login",
+    "run `claude login`",
+    "run claude login",
+    "not authenticated",
+    "authentication required",
+    "no credentials",
+    "invalid credentials",
+    "credentials expired",
+    "session expired",
+    "unauthorized",
+    "401",
+)
+
+
+def _looks_like_auth_error(stderr: str, stdout: str) -> bool:
+    blob = (stderr + "\n" + stdout).lower()
+    return any(pat in blob for pat in _AUTH_ERROR_PATTERNS)
+
+
+def _invoke_claude_cli(system_prompt: str, user_msg: str, model_id: str) -> str:
+    """Run local `claude` CLI (Claude Code) — uses user's subscription, no API key.
+
+    Headless one-shot: `claude -p --append-system-prompt SYS --model M USER_MSG`.
+    Returns stdout text. Raises:
+      - ClaudeCliMissingError if CLI absent
+      - ClaudeCliAuthError if not logged in
+      - GenerationError on other non-zero exits / timeouts
+    """
+    cli = resolve_claude_cli()
+    if not cli:
+        raise ClaudeCliMissingError(
+            f"Claude Code CLI not found. Install from {CLAUDE_INSTALL_URL} "
+            "(or set CLAUDE_CLI_PATH to point at the binary), then run `claude` "
+            "once and sign in."
+        )
+    try:
+        proc = subprocess.run(
+            [
+                cli,
+                "-p",
+                "--output-format", "text",
+                "--append-system-prompt", system_prompt,
+                "--model", model_id,
+                user_msg,
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=180,
+        )
+    except subprocess.TimeoutExpired:
+        raise GenerationError("claude CLI timed out after 180s")
+    except OSError as exc:
+        raise GenerationError(f"claude CLI exec failed: {exc}")
+    if proc.returncode != 0:
+        if _looks_like_auth_error(proc.stderr or "", proc.stdout or ""):
+            raise ClaudeCliAuthError(
+                "Claude Code CLI is not logged in. Open a terminal and run "
+                "`claude` (or `claude /login`) to sign in with your subscription, "
+                "then start the run again."
+            )
+        raise GenerationError(
+            f"claude CLI exit {proc.returncode}: {(proc.stderr or '').strip()[:500]}"
+        )
+    return proc.stdout or ""
 
 
 def _detect_skip(raw: str) -> str | None:

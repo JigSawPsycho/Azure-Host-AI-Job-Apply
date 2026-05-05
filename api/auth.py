@@ -25,9 +25,15 @@ from sqlalchemy.orm import Session
 
 from db import RepoLink, User, get_session
 from .auth_common import find_or_create_user
+from .env import is_local
 from .secrets import get_store
 
 router = APIRouter(prefix="/auth/github", tags=["auth"])
+
+
+def _block_if_local() -> None:
+    if is_local():
+        raise HTTPException(404, "GitHub auth disabled in local mode")
 
 CLIENT_ID = os.environ.get("GITHUB_CLIENT_ID", "")
 CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET", "")
@@ -37,6 +43,7 @@ DEFAULT_SCOPES = "read:user user:email repo"
 
 @router.get("/login")
 def login(request: Request) -> RedirectResponse:
+    _block_if_local()
     if not CLIENT_ID:
         raise HTTPException(500, "GITHUB_CLIENT_ID is not configured")
     state = _stdlib_secrets.token_urlsafe(24)
@@ -59,6 +66,7 @@ def callback(
     state: str,
     session: Session = Depends(get_session),
 ) -> RedirectResponse:
+    _block_if_local()
     if state != request.session.get("oauth_state"):
         raise HTTPException(400, "OAuth state mismatch")
     request.session.pop("oauth_state", None)
@@ -155,7 +163,34 @@ def logout(request: Request) -> dict:
     return {"ok": True}
 
 
+LOCAL_USER_EMAIL = "local@dev.local"
+
+
+def _get_or_create_local_user(session: Session) -> User:
+    from db import BillingMode
+
+    user = session.query(User).filter_by(email=LOCAL_USER_EMAIL).one_or_none()
+    if user is None:
+        user = User(
+            email=LOCAL_USER_EMAIL,
+            entra_oid="local-dev",
+            billing_mode=BillingMode.system,
+        )
+        session.add(user)
+        session.commit()
+    elif user.billing_mode == BillingMode.tokens:
+        # Migrate existing local user off the tokens default — tokens are
+        # disabled in local dev. System mode is the closest no-op.
+        user.billing_mode = BillingMode.system
+        session.commit()
+    return user
+
+
 def current_user(request: Request, session: Session = Depends(get_session)) -> User:
+    if is_local():
+        user = _get_or_create_local_user(session)
+        request.session["user_id"] = user.id
+        return user
     user_id = request.session.get("user_id")
     if not user_id:
         raise HTTPException(401, "not signed in")
