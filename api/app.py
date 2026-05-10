@@ -19,6 +19,7 @@ from . import (
     cvs_routes,
     email_auth,
     google_auth,
+    jobs_routes,
     runs,
     settings_routes,
 )
@@ -61,6 +62,7 @@ def create_app() -> FastAPI:
     app.include_router(runs.router)
     app.include_router(applications_routes.router)
     app.include_router(cvs_routes.router)
+    app.include_router(jobs_routes.router)
 
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
     return app
